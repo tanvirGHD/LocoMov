@@ -1,119 +1,166 @@
 # LocoMuv
 
-বাংলাদেশের পাড়াভিত্তিক মাইক্রো-ডেলিভারি ও ছোটখাটো কাজের নেটওয়ার্ক। গ্রাহক স্থানীয় কাজ পোস্ট করেন; কাছাকাছি রানাররা কাজটি নিতে বা মূল্য প্রস্তাব দিতে পারেন। পিকআপ এবং ডেলিভারি—দুটিই আলাদা OTP দিয়ে নিশ্চিত হয়।
+A neighborhood-based micro-delivery and local task network for Bangladesh. Customers can post local tasks, and nearby runners can accept them or submit price offers. Both pickup and delivery are verified using separate OTPs.
 
-## প্রযুক্তি
+## Technology Stack
 
-- React 18, Vite, Tailwind CSS, React Leaflet এবং Recharts
-- Node.js, Express, Mongoose এবং MongoDB
-- HttpOnly cookie-তে JWT সেশন, bcrypt পাসওয়ার্ড হ্যাশ
-- GeoJSON Point ও `2dsphere` ইনডেক্স দিয়ে কাছাকাছি কাজ খোঁজা
+- React 18, Vite, Tailwind CSS, React Leaflet, and Recharts
+- Node.js, Express, Mongoose, and MongoDB
+- JWT sessions stored in HttpOnly cookies and bcrypt password hashing
+- GeoJSON Point and `2dsphere` indexes for finding nearby tasks
 
-## প্রয়োজনীয়তা
+## Requirements
 
-- Node.js 18 বা পরবর্তী সংস্করণ
-- MongoDB লোকাল সার্ভার অথবা MongoDB Atlas
+- Node.js 18 or later
+- A local MongoDB server or MongoDB Atlas
 
-## সেটআপ
+## Setup
 
-1. রুট, `server` এবং `client` ফোল্ডারে নির্ভরতা ইনস্টল করুন:
+1. Install dependencies in the root, `server`, and `client` directories:
 
    ```sh
    npm run install:all
    ```
 
-2. `server/.env.example` কপি করে `server/.env` তৈরি করুন। `MONGO_URI`, `JWT_SECRET` এবং `OTP_SECRET`-এ নিজের মান দিন। OTP গোপনীয়তা ও সুরক্ষার জন্য `OTP_SECRET`-কে JWT secret থেকে আলাদা রাখুন।
+2. Copy `server/.env.example` to `server/.env`. Set your own values for `MONGO_URI`, `JWT_SECRET`, and `OTP_SECRET`. For OTP security, keep `OTP_SECRET` separate from the JWT secret.
 
-3. দুটি টার্মিনালে চালু করুন:
+3. Start the application in two separate terminals:
 
    ```sh
    npm run dev:server
    npm run dev:client
    ```
 
-4. `http://localhost:5173` খুলে গ্রাহক বা রানার হিসেবে অ্যাকাউন্ট তৈরি করুন। ডেভেলপমেন্টে Vite `/api` অনুরোধগুলো `http://localhost:5000` সার্ভারে পাঠায়।
+4. Open `http://localhost:5173` and create an account as a customer or runner. During development, Vite forwards `/api` requests to the server running at `http://localhost:5000`.
 
-স্থানীয় MongoDB-তে customer, runner ও admin ডেমো অ্যাকাউন্ট তৈরি করতে `server/.env`-এ `MONGO_URI=mongodb://127.0.0.1:27017/parasync` সেট করে চালান:
+### Demo Accounts
+
+To create customer, runner, and admin demo accounts in a local MongoDB database, set the following value in `server/.env`:
+
+```env
+MONGO_URI=mongodb://127.0.0.1:27017/parasync
+```
+
+Then run:
 
 ```sh
 npm run seed:demo --prefix server
 ```
 
-ডেমো লগইন:
+Demo login credentials:
 
-| ধরন | ইমেইল | পাসওয়ার্ড |
+| Role | Email | Password |
 |---|---|---|
 | Customer | `customer@gmail.com` | `customer` |
 | Runner | `runner@gmail.com` | `runner12` |
 | Admin | `admin@gmail.com` | `admin123` |
 
-এই দুর্বল demo password ও admin account কেবল স্থানীয় development-এ ব্যবহার করুন। Script production environment বা localhost ছাড়া অন্য MongoDB host-এ অ্যাকাউন্ট তৈরি করতে অস্বীকার করে। Admin dashboard-এ সব account দেখা যায়; customer ও runner account সাময়িকভাবে নিষ্ক্রিয় বা পুনরায় সক্রিয় করা যায়।
+These weak demo passwords and the demo admin account are intended for local development only. The script refuses to create accounts in production environments or in MongoDB instances hosted outside localhost.
 
-Atlas বা অন্য remote database-এ আলাদা admin account তৈরি করতে `server/.env`-এ `ALLOW_ADMIN_SETUP=true`, `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PHONE` এবং অন্তত ১২ অক্ষরের নিজস্ব `ADMIN_PASSWORD` সেট করে চালান:
+The admin dashboard allows administrators to view all accounts and temporarily deactivate or reactivate customer and runner accounts.
+
+### Setting Up an Admin Account for a Remote Database
+
+To create a separate admin account for Atlas or another remote database, configure the following values in `server/.env`:
+
+```env
+ALLOW_ADMIN_SETUP=true
+ADMIN_NAME=Your Admin Name
+ADMIN_EMAIL=your-admin@example.com
+ADMIN_PHONE=Your Admin Phone
+ADMIN_PASSWORD=YourStrongPassword
+```
+
+The admin password must contain at least 12 characters.
+
+Run the following command:
 
 ```sh
 npm run setup:admin --prefix server
 ```
 
-এই command কেবল স্পষ্ট অনুমতি ও শক্তিশালী নতুন password থাকলেই account তৈরি করে; আগে থেকে থাকা user-কে পরিবর্তন বা admin-এ উন্নীত করে না। কাজ শেষে `.env` থেকে `ALLOW_ADMIN_SETUP` ও admin bootstrap মানগুলো সরিয়ে ফেলুন। `admin123`-এর মতো demo password remote বা production database-এ ব্যবহার করবেন না।
+This command creates an admin account only when explicit permission and a strong new password are provided. It does not modify existing users or promote existing accounts to admin.
 
-## ফিচার
+After setup, remove `ALLOW_ADMIN_SETUP` and the admin bootstrap values from `.env`.
 
-- গ্রাহক ও রানার নিবন্ধন; নাম, ইমেইল, ফোন এবং পাসওয়ার্ড ছাড়া NID/জাতীয় পরিচয়পত্র সংগ্রহ করা হয় না।
-- গ্রাহক কাজের বিবরণ, আনুমানিক বাজেট, পিকআপ ও ডেলিভারির ঠিকানা দিয়ে কাজ পোস্ট করেন; স্থানাঙ্ক লেখার বদলে জুমযোগ্য মানচিত্রে পিন বসিয়ে স্থান বাছাই করেন।
-- রানার ব্রাউজারের অবস্থান অনুমতি দিলে ৫ কিমির মধ্যে এবং তার আর্থিক সীমার মধ্যে থাকা খোলা কাজ `$near` দিয়ে দেখেন।
-- রানার সরাসরি কাজ নিতে বা নির্দিষ্ট মূল্য ও সময় দিয়ে একবার প্রস্তাব করতে পারেন।
-- কাজ গ্রহণের পর গ্রাহক পিকআপ OTP ও ডেলিভারি OTP পান। রানার প্রথম OTP দিয়ে পিকআপ এবং দ্বিতীয় OTP দিয়ে সম্পন্ন হওয়া নিশ্চিত করেন।
-- পাঁচবার ভুল OTP দিলে ১৫ মিনিটের জন্য OTP যাচাই আটকে যায়।
-- নতুন রানারের প্রাথমিক বিশ্বাস স্কোর ১০০ এবং কাজের সীমা ৳৫০০। সফল কাজ স্কোর/সীমা বাড়ায়; রানারের বাতিল বা রানারের দায়ে নিষ্পত্তি হওয়া বিরোধে তা কমে।
-- কাজ বাতিল, বিরোধ রিপোর্ট এবং প্রশাসকের বিরোধ নিষ্পত্তি।
-- ড্যাশবোর্ডে কাজের সারাংশ, সাম্প্রতিক কাজ এবং চার্ট।
+Never use demo passwords such as `admin123` with remote or production databases.
 
-## API সংক্ষিপ্তসার
+## Features
 
-| পদ্ধতি | পথ | বিবরণ |
+- Customer and runner registration. Only names, email addresses, phone numbers, and passwords are collected. NID or national identity card information is not collected.
+- Customers can post tasks with descriptions, estimated budgets, pickup addresses, and delivery addresses. Locations are selected by placing pins on a zoomable map instead of entering coordinates manually.
+- Runners can view open tasks within a 5 km radius and within their financial limits using MongoDB's `$near` operator, provided they grant browser location access.
+- Runners can directly accept tasks or submit one price and time offer per task.
+- After a task is accepted, the customer receives a pickup OTP and a delivery OTP. The runner verifies the pickup using the first OTP and confirms completion using the second OTP.
+- OTP verification is temporarily blocked for 15 minutes after five incorrect attempts.
+- New runners start with a trust score of 100 and a task limit of ৳500. Successful tasks increase their score and limit, while runner cancellations and disputes resolved against the runner decrease them.
+- Task cancellation, dispute reporting, and administrative dispute resolution.
+- Dashboards featuring task summaries, recent activities, and charts.
+
+## API Overview
+
+| Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/auth/register` | গ্রাহক বা রানার অ্যাকাউন্ট তৈরি |
-| `POST` | `/api/auth/login` | লগইন |
-| `POST` | `/api/auth/logout` | লগআউট |
-| `GET` | `/api/auth/me` | বর্তমান ব্যবহারকারী |
-| `GET` | `/api/dashboard` | কাজের সারাংশ ও সাম্প্রতিক কার্যকলাপ |
-| `POST` / `GET` | `/api/tasks` | কাজ তৈরি / নিজের কাজের তালিকা |
-| `DELETE` | `/api/tasks/:taskId` | রানার গ্রহণ না-করা নিজের অপেক্ষমাণ কাজের পোস্ট মুছুন |
-| `GET` | `/api/tasks/nearby?lat=...&lng=...&radiusKm=5` | রানারের কাছের কাজ |
-| `POST` | `/api/tasks/:taskId/accept` | সরাসরি কাজ গ্রহণ |
-| `POST` / `GET` | `/api/tasks/:taskId/bids` | প্রস্তাব তৈরি / তালিকা |
-| `POST` | `/api/tasks/:taskId/bids/:bidId/accept` | গ্রাহকের প্রস্তাব গ্রহণ |
-| `POST` | `/api/tasks/:taskId/pickup-otp` | পিকআপ OTP যাচাই |
-| `PATCH` | `/api/tasks/:taskId/status` | রানারের ডেলিভারি ধাপ হালনাগাদ |
-| `POST` | `/api/tasks/:taskId/delivery-otp` | ডেলিভারি OTP যাচাই |
-| `POST` | `/api/tasks/:taskId/cancel` | কাজ বাতিল |
-| `POST` | `/api/tasks/:taskId/disputes` | বিরোধ রিপোর্ট |
-| `POST` | `/api/tasks/:taskId/disputes/resolve` | প্রশাসকের নিষ্পত্তি |
+| `POST` | `/api/auth/register` | Register a customer or runner account |
+| `POST` | `/api/auth/login` | Log in |
+| `POST` | `/api/auth/logout` | Log out |
+| `GET` | `/api/auth/me` | Get the current user |
+| `GET` | `/api/dashboard` | Get task summaries and recent activity |
+| `POST` / `GET` | `/api/tasks` | Create a task / List the user's own tasks |
+| `DELETE` | `/api/tasks/:taskId` | Delete the user's own pending task that has not been accepted by a runner |
+| `GET` | `/api/tasks/nearby?lat=...&lng=...&radiusKm=5` | Find nearby tasks for a runner |
+| `POST` | `/api/tasks/:taskId/accept` | Directly accept a task |
+| `POST` / `GET` | `/api/tasks/:taskId/bids` | Create a price offer / List offers |
+| `POST` | `/api/tasks/:taskId/bids/:bidId/accept` | Accept a runner's offer |
+| `POST` | `/api/tasks/:taskId/pickup-otp` | Verify the pickup OTP |
+| `PATCH` | `/api/tasks/:taskId/status` | Update the runner's delivery status |
+| `POST` | `/api/tasks/:taskId/delivery-otp` | Verify the delivery OTP |
+| `POST` | `/api/tasks/:taskId/cancel` | Cancel a task |
+| `POST` | `/api/tasks/:taskId/disputes` | Report a dispute |
+| `POST` | `/api/tasks/:taskId/disputes/resolve` | Resolve a dispute as an administrator |
 
-রানার পিকআপ OTP যাচাইয়ের পর ক্রমানুসারে `picked-up` → `in-transit` → `arriving` ধাপে কাজ এগিয়ে নেন; ডেলিভারি OTP দিয়ে `completed` হয়। গ্রাহকের কাজের তালিকায় এই অবস্থা স্বয়ংক্রিয়ভাবে প্রতি ১৫ সেকেন্ডে হালনাগাদ হয়। সাধারণ API প্রতিক্রিয়ায় OTP দেখানো হয় না; কেবল সংশ্লিষ্ট গ্রাহক নিজের সক্রিয় কাজের OTP দেখতে পান। OTP ডেটাবেসে AES-256-GCM দিয়ে এনক্রিপ্ট করে রাখা হয়।
+After pickup OTP verification, the runner progresses through the following delivery stages in order:
 
-## মডেল
+`picked-up` → `in-transit` → `arriving`
 
-- `server/src/models/User.js`: পরিচয়, ভূমিকা, পাসওয়ার্ড হ্যাশ, বিশ্বাস স্কোর ও রানার সীমা
-- `server/src/models/Task.js`: কাজের বিবরণ, GeoJSON অবস্থান, অবস্থা, এনক্রিপ্ট করা OTP ও বিরোধ
-- `server/src/models/Bid.js`: রানারের প্রস্তাব; প্রতি কাজ/রানারে একটি প্রস্তাব
+The task is marked as `completed` after the delivery OTP is verified.
 
-## হাতে পরীক্ষা
+The customer's task list automatically refreshes its status every 15 seconds.
 
-1. দুইটি অ্যাকাউন্ট তৈরি করুন—একটি গ্রাহক ও একটি রানার।
-2. গ্রাহক হিসেবে কাজ পোস্ট করুন। ঠিকানা লিখে পিকআপ ও ডেলিভারির জন্য মানচিত্রে জুম করে পিন বসান, অথবা বর্তমান অবস্থান ব্যবহার করুন; বাজেট নতুন রানারের ৳৫০০ সীমার মধ্যে রাখুন।
-3. রানার অ্যাকাউন্টে লগইন করে অবস্থান শেয়ার করুন; কাছের কাজের তালিকা ও মানচিত্র দেখুন।
-4. কাজটি সরাসরি নিন অথবা প্রস্তাব পাঠান। গ্রাহক হিসেবে প্রস্তাব গ্রহণ করুন; গ্রাহকের সক্রিয় কাজ কার্ডে দুইটি OTP দেখতে পাবেন।
-5. পিকআপ OTP এবং ডেলিভারি OTP রানার হিসেবে যাচাই করুন। ভুল OTP পাঁচবার দিলে অপেক্ষার সীমা পরীক্ষা করুন।
-6. কাজ বাতিল ও বিরোধ রিপোর্ট/নিষ্পত্তি পরীক্ষা করতে প্রশাসক ভূমিকার অ্যাকাউন্ট ডেটাবেসে আলাদাভাবে নির্ধারণ করুন; জনসাধারণের নিবন্ধন দিয়ে `admin` তৈরি করা যায় না।
-7. মোবাইল ভিউতে নেভিগেশন, ফর্ম, কাজের তালিকা এবং মানচিত্র পরীক্ষা করুন।
+OTP values are not included in ordinary API responses. Only the customer associated with an active task can view that task's OTPs.
 
-## বিল্ড ও চালু
+OTP data is encrypted in the database using AES-256-GCM.
+
+## Data Models
+
+- `server/src/models/User.js`: User identity, role, password hash, trust score, and runner task limit.
+- `server/src/models/Task.js`: Task details, GeoJSON locations, status, encrypted OTPs, and disputes.
+- `server/src/models/Bid.js`: Runner offers, with one offer per runner for each task.
+
+## Manual Testing
+
+1. Create two accounts: one customer and one runner.
+2. Log in as a customer and post a task. Enter the addresses and place pins on the map for pickup and delivery, or use the current location. Keep the budget within the new runner's ৳500 limit.
+3. Log in as a runner and share your location. View nearby tasks in the list and on the map.
+4. Accept the task directly or submit a price offer. Log in as the customer and accept the offer. You should see both OTPs on the active task card.
+5. Log in as the runner and verify the pickup OTP and delivery OTP. Test the verification limit by entering an incorrect OTP five times.
+6. To test task cancellation and dispute reporting or resolution, configure an admin account separately in the database. Public registration does not allow admin account creation.
+7. Test the navigation, forms, task lists, and maps in the mobile view.
+
+## Build and Run
+
+Build the application:
 
 ```sh
 npm run build
+```
+
+Start the application:
+
+```sh
 npm start
 ```
 
-প্রোডাকশনে `NODE_ENV=production` সেট করুন। একই origin-এ React বিল্ড Express থেকে পরিবেশন করা হয়।
+Set `NODE_ENV=production` in production environments.
+
+In production, the Express server serves the React build from the same origin.
