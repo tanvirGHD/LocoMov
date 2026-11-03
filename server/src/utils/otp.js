@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, randomInt, t
 
 function key() {
   const secret = process.env.OTP_SECRET || process.env.JWT_SECRET;
-  if (!secret) throw new Error('OTP_SECRET অথবা JWT_SECRET কনফিগার করা নেই');
+  if (!secret) throw new Error('OTP_SECRET or JWT_SECRET is not configured.');
   return createHash('sha256').update('ParaSync OTP encryption key v1:').update(secret).digest();
 }
 
@@ -19,7 +19,7 @@ export function encryptOtp(otp) {
 
 export function decryptOtp(encrypted) {
   const [iv, tag, ciphertext] = encrypted.split('.');
-  if (!iv || !tag || !ciphertext) throw new Error('OTP তথ্যটি সঠিক নয়');
+  if (!iv || !tag || !ciphertext) throw new Error('The OTP data is invalid.');
   const decipher = createDecipheriv('aes-256-gcm', key(), Buffer.from(iv, 'base64url'));
   decipher.setAuthTag(Buffer.from(tag, 'base64url'));
   return Buffer.concat([
@@ -29,7 +29,12 @@ export function decryptOtp(encrypted) {
 }
 
 export function verifyOtp(encrypted, candidate) {
-  const expected = Buffer.from(decryptOtp(encrypted));
-  const actual = Buffer.from(candidate);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
+  try {
+    const expected = Buffer.from(decryptOtp(encrypted));
+    const actual = Buffer.from(candidate);
+    return expected.length === actual.length && timingSafeEqual(expected, actual);
+  } catch (_) {
+    // OTP was encrypted with a different key (stale data from a previous secret); treat as mismatch
+    return false;
+  }
 }

@@ -5,9 +5,9 @@ export default {
     extend: {
       colors: {
         para: {
-          ink: '#35251d',
-          brown: '#984826',
-          cream: '#FBF6EB',
+          ink: '#1a1411',
+          brown: '#814124',
+          cream: '#ffffff',
         },
       },
       fontFamily: {

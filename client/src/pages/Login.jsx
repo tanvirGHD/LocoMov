@@ -1,18 +1,66 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-export default function Login() {
+const content = {
+  en: {
+    back: '← Back to home',
+    eyebrow: 'Welcome back',
+    title: 'Sign in to your account',
+    intro: 'Your neighborhood jobs are waiting for you.',
+    email: 'Email address',
+    emailPlaceholder: 'Your email',
+    password: 'Password',
+    passwordPlaceholder: 'Your password',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
+    login: 'Log in',
+    loginBusy: 'Please wait...',
+    demoTitle: 'Quick demo login',
+    demoSub: 'Choose a role and the credentials will fill in',
+    adminInfo: 'These credentials are only prefilled; the admin account must exist in your database. Setup guidance is in the README.',
+    genericInfo: 'These credentials are only prefilled; if the account does not exist, seed the local demo database.',
+    registerPrompt: 'New here?',
+    registerAction: 'Create account',
+    privacy: 'Your personal information stays protected. No NID is required.'
+  },
+  bn: {
+    back: '← হোমে ফিরুন',
+    eyebrow: 'ফিরে আসুন',
+    title: 'আপনার অ্যাকাউন্টে লগইন করুন',
+    intro: 'আপনার এলাকার কাজগুলো এখনই অপেক্ষা করছে।',
+    email: 'ইমেইল ঠিকানা',
+    emailPlaceholder: 'আপনার ইমেইল',
+    password: 'পাসওয়ার্ড',
+    passwordPlaceholder: 'আপনার পাসওয়ার্ড',
+    showPassword: 'পাসওয়ার্ড দেখান',
+    hidePassword: 'পাসওয়ার্ড লুকান',
+    login: 'লগইন',
+    loginBusy: 'একটু অপেক্ষা করুন...',
+    demoTitle: 'দ্রুত ডেমো লগইন',
+    demoSub: 'ভূমিকা বেছে নিন—ক্রেডেনশিয়ালস স্বয়ংক্রিয়ভাবে পূরণ হবে',
+    adminInfo: 'এই ক্রেডেনশিয়ালস শুধু প্রিফিল্ড করা; অ্যাডমিন অ্যাকাউন্ট আপনার ডাটাবেসে থাকতে হবে। সেটআপ গাইড README-এ আছে।',
+    genericInfo: 'এই ক্রেডেনশিয়ালস শুধু প্রিফিল্ড করা; অ্যাকাউন্ট না থাকলে লোকাল ডেমো ডাটাবেসে সিড দিন।',
+    registerPrompt: 'নতুন?',
+    registerAction: 'অ্যাকাউন্ট তৈরি',
+    privacy: 'আপনার ব্যক্তিগত তথ্য সুরক্ষিত থাকবে। NID লাগে না।'
+  }
+};
+
+export default function Login({ language = 'en' }) {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [selectedDemo, setSelectedDemo] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const t = content[language] || content.en;
   const demoAccounts = import.meta.env.DEV ? [
-    { role: 'গ্রাহক', email: 'customer@gmail.com', password: 'customer' },
-    { role: 'রানার', email: 'runner@gmail.com', password: 'runner12' },
-    { role: 'অ্যাডমিন', email: 'admin@gmail.com', password: 'admin123' },
+    { role: 'Customer', email: 'customer@gmail.com', password: 'customer' },
+    { role: 'Runner', email: 'runner@gmail.com', password: 'runner12' },
+    { role: 'Admin', email: 'admin@gmail.com', password: 'admin123' },
   ] : [];
 
   async function submit(event) {
@@ -32,19 +80,26 @@ export default function Login() {
   return (
     <section className="auth-page">
       <div className="auth-card">
-        <Link className="auth-back" to="/">← মূল পাতায় ফিরে যান</Link>
+        <Link className="auth-back" to="/">{t.back}</Link>
         <img className="auth-logo" src="/locomuv-logo.png" alt="LocoMuv" />
-        <div className="eyebrow">আবার স্বাগতম</div>
-        <h1>আপনার অ্যাকাউন্টে প্রবেশ করুন</h1>
-        <p className="auth-intro">আপনার পাড়ার কাজগুলো অপেক্ষা করছে।</p>
+        <div className="eyebrow">{t.eyebrow}</div>
+        <h1>{t.title}</h1>
+        <p className="auth-intro">{t.intro}</p>
         <form onSubmit={submit} className="auth-form">
-          <label>ইমেইল ঠিকানা<input type="email" autoComplete="email" placeholder="আপনার ইমেইল" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required /></label>
-          <label>পাসওয়ার্ড<input type="password" autoComplete="current-password" placeholder="আপনার পাসওয়ার্ড" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required /></label>
+          <label>{t.email}<input type="email" autoComplete="email" placeholder={t.emailPlaceholder} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required /></label>
+          <label>{t.password}
+            <span className="password-field">
+              <input type={showPassword ? 'text' : 'password'} autoComplete="current-password" placeholder={t.passwordPlaceholder} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required />
+              <button type="button" className="password-toggle" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? t.hidePassword : t.showPassword}>
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </span>
+          </label>
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="button button-primary button-full" disabled={busy}>{busy ? 'অপেক্ষা করুন...' : 'লগইন করুন'} <span aria-hidden="true">→</span></button>
+          <button className="button button-primary button-full" disabled={busy}>{busy ? t.loginBusy : t.login} <span aria-hidden="true">→</span></button>
         </form>
-        {demoAccounts.length > 0 && <section className="demo-login" aria-label="ডেমো অ্যাকাউন্ট">
-          <div><b>দ্রুত ডেমো লগইন</b><small>একটি role বেছে নিলে credential বসে যাবে</small></div>
+        {demoAccounts.length > 0 && <section className="demo-login" aria-label="Demo account">
+          <div><b>{t.demoTitle}</b><small>{t.demoSub}</small></div>
           <div className="demo-login-options">
             {demoAccounts.map((account) => <button
               type="button"
@@ -53,13 +108,13 @@ export default function Login() {
             >{account.role}</button>)}
           </div>
           <small className="demo-login-hint">
-            {selectedDemo === 'অ্যাডমিন'
-              ? 'এই credentials শুধু ফর্মে বসে; admin account আপনার database-এ আগে তৈরি থাকতে হবে। নিরাপদ setup নির্দেশনা README-তে আছে।'
-              : 'এই credentials শুধু ফর্মে বসে; account না থাকলে local demo database seed করুন।'}
+            {selectedDemo === 'Admin'
+              ? t.adminInfo
+              : t.genericInfo}
           </small>
         </section>}
-        <p className="auth-switch">নতুন এখানে? <Link to="/register">অ্যাকাউন্ট খুলুন</Link></p>
-        <div className="privacy-note"><span>♧</span> আপনার ব্যক্তিগত তথ্য সুরক্ষিত থাকে। NID নেওয়া হয় না।</div>
+        <p className="auth-switch">{t.registerPrompt} <Link to="/register">{t.registerAction}</Link></p>
+        <div className="privacy-note"><span>♧</span> {t.privacy}</div>
       </div>
     </section>
   );

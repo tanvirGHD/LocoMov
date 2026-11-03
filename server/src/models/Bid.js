@@ -22,7 +22,7 @@ const bidSchema = new Schema({
     max: 500000,
     validate: {
       validator: Number.isInteger,
-      message: 'প্রস্তাবিত মূল্য পূর্ণ টাকা হতে হবে',
+      message: 'The proposed price must be a whole number.',
     },
   },
   deliveryTime: {
@@ -32,7 +32,7 @@ const bidSchema = new Schema({
     max: 10080,
     validate: {
       validator: Number.isInteger,
-      message: 'সময় পূর্ণ মিনিটে দিন',
+      message: 'Enter the delivery time in full minutes.',
     },
   },
   status: {

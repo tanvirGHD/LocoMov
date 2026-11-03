@@ -15,7 +15,7 @@ const pointSchema = new Schema({
           value[0] >= -180 && value[0] <= 180 &&
           value[1] >= -90 && value[1] <= 90;
       },
-      message: 'অবস্থানের longitude ও latitude সঠিক নয়',
+      message: 'Longitude and latitude values must be valid.',
     },
   },
 }, { _id: false });
@@ -37,15 +37,15 @@ const taskSchema = new Schema({
     type: String,
     required: true,
     trim: true,
-    minlength: [3, 'শিরোনাম অন্তত ৩ অক্ষরের হতে হবে'],
-    maxlength: [120, 'শিরোনাম ১২০ অক্ষরের বেশি হতে পারবে না'],
+    minlength: [3, 'Title must be at least 3 characters long.'],
+    maxlength: [120, 'Title must be no longer than 120 characters.'],
   },
   description: {
     type: String,
     required: true,
     trim: true,
-    minlength: [5, 'বিস্তারিত অন্তত ৫ অক্ষরের হতে হবে'],
-    maxlength: [2000, 'বিস্তারিত ২০০০ অক্ষরের বেশি হতে পারবে না'],
+    minlength: [5, 'Please add more task details.'],
+    maxlength: [2000, 'Task details must be 2000 characters or fewer.'],
   },
   estimatedPrice: {
     type: Number,
@@ -54,7 +54,7 @@ const taskSchema = new Schema({
     max: 500000,
     validate: {
       validator: Number.isInteger,
-      message: 'আনুমানিক মূল্য পূর্ণ টাকা হতে হবে',
+      message: 'Estimated price must be a whole number.',
     },
   },
   finalPrice: {
@@ -65,7 +65,7 @@ const taskSchema = new Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'accepted', 'picked-up', 'in-transit', 'arriving', 'completed', 'cancelled'],
+    enum: ['pending', 'accepted', 'picked-up', 'in-transit', 'arriving', 'completed', 'cancelled', 'deleted'],
     default: 'pending',
     required: true,
     index: true,
@@ -87,7 +87,12 @@ const taskSchema = new Schema({
   disputeReason: { type: String, trim: true, maxlength: 1000, default: '' },
   disputeBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   disputeResolution: { type: String, trim: true, maxlength: 1000, default: '' },
+  cancelledBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   cancellationReason: { type: String, trim: true, maxlength: 500, default: '' },
+  hiddenForCustomer: { type: Boolean, default: false, index: true },
+  customerRating: { type: Number, default: null },
+  customerReviewComment: { type: String, trim: true, maxlength: 1000, default: '' },
+  deletedAt: { type: Date, default: null },
   acceptedAt: { type: Date, default: null },
   pickedUpAt: { type: Date, default: null },
   departedAt: { type: Date, default: null },
@@ -104,5 +109,6 @@ taskSchema.index({ deliveryLocation: '2dsphere' });
 taskSchema.index({ status: 1, createdAt: -1 });
 taskSchema.index({ customerId: 1, createdAt: -1 });
 taskSchema.index({ runnerId: 1, status: 1, createdAt: -1 });
+taskSchema.index({ customerId: 1, hiddenForCustomer: 1, createdAt: -1 });
 
 export default model('Task', taskSchema);

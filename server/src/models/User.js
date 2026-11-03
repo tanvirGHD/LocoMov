@@ -6,14 +6,14 @@ const { Schema, model } = mongoose;
 const userSchema = new Schema({
   name: {
     type: String,
-    required: [true, 'নাম লিখুন'],
+    required: [true, 'Name is required'],
     trim: true,
-    minlength: [2, 'নাম অন্তত ২ অক্ষরের হতে হবে'],
-    maxlength: [80, 'নাম ৮০ অক্ষরের বেশি হতে পারবে না'],
+    minlength: [2, 'Name must be at least 2 characters long'],
+    maxlength: [80, 'Name cannot exceed 80 characters'],
   },
   email: {
     type: String,
-    required: [true, 'ইমেইল লিখুন'],
+    required: [true, 'Email is required'],
     unique: true,
     lowercase: true,
     trim: true,
@@ -22,7 +22,7 @@ const userSchema = new Schema({
   },
   phone: {
     type: String,
-    required: [true, 'ফোন নম্বর লিখুন'],
+    required: [true, 'Phone number is required'],
     unique: true,
     trim: true,
     set(value) {
@@ -33,14 +33,14 @@ const userSchema = new Schema({
     },
     validate: {
       validator: (value) => /^\+8801[3-9]\d{8}$/.test(value),
-      message: 'বাংলাদেশের সঠিক মোবাইল নম্বর দিন',
+      message: 'Please enter a valid Bangladeshi mobile number',
     },
     index: true,
   },
   password: {
     type: String,
-    required: [true, 'পাসওয়ার্ড লিখুন'],
-    minlength: [8, 'পাসওয়ার্ড অন্তত ৮ অক্ষরের হতে হবে'],
+    required: [true, 'Password is required'],
+    minlength: [8, 'Password must be at least 8 characters long'],
     maxlength: 128,
     select: false,
   },
@@ -56,6 +56,12 @@ const userSchema = new Schema({
     default: true,
     index: true,
   },
+  verificationStatus: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'approved',
+    index: true,
+  },
   trustScore: {
     type: Number,
     min: 0,
@@ -67,10 +73,21 @@ const userSchema = new Schema({
   runnerLimit: {
     type: Number,
     min: 0,
-    max: 5000,
+    max: 500000,
     default() {
-      return this.role === 'runner' ? 500 : 0;
+      return this.role === 'runner' ? 50000 : 0;
     },
+  },
+  avgRating: {
+    type: Number,
+    min: 0,
+    max: 5,
+    default: 5.0,
+  },
+  reviewCount: {
+    type: Number,
+    min: 0,
+    default: 0,
   },
 }, {
   timestamps: true,

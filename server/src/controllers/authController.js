@@ -1,21 +1,22 @@
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import User from '../models/User.js';
+import Review from '../models/Review.js';
 
 const registerSchema = z.object({
-  name: z.string().trim().min(2, 'নাম অন্তত ২ অক্ষরের হতে হবে').max(80),
-  email: z.string().trim().email('সঠিক ইমেইল দিন').max(254),
-  phone: z.string().trim().min(10, 'সঠিক ফোন নম্বর দিন').max(20),
-  password: z.string().min(8, 'পাসওয়ার্ড অন্তত ৮ অক্ষরের হতে হবে').max(128),
+  name: z.string().trim().min(2, 'Name must be at least 2 characters long').max(80),
+  email: z.string().trim().email('Please enter a valid email').max(254),
+  phone: z.string().trim().min(10, 'Please enter a valid phone number').max(20),
+  password: z.string().min(8, 'Password must be at least 8 characters long').max(128),
   role: z.enum(['customer', 'runner']).default('customer'),
 });
 
 const loginSchema = z.object({
-  email: z.string().trim().email('সঠিক ইমেইল দিন'),
-  password: z.string().min(1, 'পাসওয়ার্ড লিখুন').max(128),
+  email: z.string().trim().email('Please enter a valid email'),
+  password: z.string().min(1, 'Please enter your password').max(128),
 });
 
-function publicUser(user) {
+export function publicUser(user) {
   return {
     id: user._id,
     name: user.name,
@@ -24,6 +25,10 @@ function publicUser(user) {
     role: user.role,
     trustScore: user.trustScore,
     runnerLimit: user.runnerLimit,
+    avgRating: Number((user.avgRating ?? 5.0).toFixed(1)),
+    reviewCount: user.reviewCount ?? 0,
+    isActive: user.isActive !== false,
+    verificationStatus: user.verificationStatus || 'approved',
   };
 }
 
@@ -46,27 +51,34 @@ export async function register(req, res) {
   const existing = await User.findOne({
     $or: [{ email: email.toLowerCase() }, { phone }],
   });
-  if (existing) return res.status(409).json({ message: 'এই ইমেইল বা ফোন নম্বর দিয়ে অ্যাকাউন্ট আছে' });
+  if (existing) return res.status(409).json({ message: 'An account already exists with this email or phone number.' });
 
   try {
-    const user = await User.create({ name, email, phone, password, role });
+      const user = await User.create({
+        name,
+        email,
+        phone,
+        password,
+        role,
+        verificationStatus: role === 'runner' ? 'pending' : 'approved',
+      });
     createSession(res, user);
     return res.status(201).json(publicUser(user));
   } catch (error) {
-    if (error.code === 11000) return res.status(409).json({ message: 'এই ইমেইল বা ফোন নম্বর দিয়ে অ্যাকাউন্ট আছে' });
+    if (error.code === 11000) return res.status(409).json({ message: 'An account already exists with this email or phone number.' });
     throw error;
   }
 }
 
 export async function login(req, res) {
   const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: 'ইমেইল ও পাসওয়ার্ড সঠিকভাবে লিখুন' });
+  if (!parsed.success) return res.status(400).json({ message: 'Please enter a valid email and password.' });
 
   const user = await User.findOne({ email: parsed.data.email.toLowerCase() }).select('+password');
   if (!user || !(await user.verifyPassword(parsed.data.password))) {
-    return res.status(401).json({ message: 'ইমেইল বা পাসওয়ার্ড ভুল' });
+    return res.status(401).json({ message: 'Incorrect email or password.' });
   }
-  if (!user.isActive) return res.status(403).json({ message: 'এই অ্যাকাউন্টটি প্রশাসক নিষ্ক্রিয় করেছেন' });
+  if (!user.isActive) return res.status(403).json({ message: 'This account has been deactivated by an admin.' });
 
   createSession(res, user);
   return res.json(publicUser(user));
@@ -74,9 +86,18 @@ export async function login(req, res) {
 
 export function logout(req, res) {
   res.clearCookie('token', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
-  return res.json({ message: 'লগআউট হয়েছে' });
+  return res.json({ message: 'Logged out successfully.' });
 }
 
 export async function me(req, res) {
   return res.json(publicUser(req.user));
+}
+
+export async function getUserReviews(req, res) {
+  const reviews = await Review.find({ reviewee: req.params.id })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .populate('reviewer', 'name role')
+    .lean();
+  return res.json({ reviews });
 }

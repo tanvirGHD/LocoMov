@@ -4,11 +4,11 @@ import { z } from 'zod';
 import User from '../models/User.js';
 
 if (process.env.ALLOW_ADMIN_SETUP !== 'true') {
-  throw new Error('Admin তৈরি করতে .env-এ ALLOW_ADMIN_SETUP=true দিয়ে স্পষ্টভাবে অনুমতি দিন');
+  throw new Error('Set ALLOW_ADMIN_SETUP=true in your environment to create an admin account.');
 }
 
 const { MONGO_URI, ADMIN_NAME, ADMIN_EMAIL, ADMIN_PHONE, ADMIN_PASSWORD } = process.env;
-if (!MONGO_URI) throw new Error('MONGO_URI .env ফাইলে নেই');
+if (!MONGO_URI) throw new Error('MONGO_URI is missing from the environment file.');
 const account = z.object({
   name: z.string().trim().min(2).max(80),
   email: z.string().trim().email().max(254),
@@ -21,10 +21,10 @@ const account = z.object({
   password: ADMIN_PASSWORD,
 });
 if (!account.success) {
-  throw new Error('ADMIN_NAME, সঠিক ADMIN_EMAIL, ADMIN_PHONE এবং অন্তত ১২ অক্ষরের ADMIN_PASSWORD .env-এ দিতে হবে');
+  throw new Error('Provide ADMIN_NAME, ADMIN_EMAIL, ADMIN_PHONE, and a valid ADMIN_PASSWORD with at least 12 characters.');
 }
 if (['admin123', 'password123', 'Demo@12345'].includes(account.data.password)) {
-  throw new Error('ADMIN_PASSWORD অন্তত ১২ অক্ষরের এবং demo password থেকে আলাদা হতে হবে');
+  throw new Error('ADMIN_PASSWORD must be at least 12 characters and different from common demo passwords.');
 }
 
 try {
@@ -36,7 +36,7 @@ try {
     ],
   });
   if (existingUser) {
-    throw new Error('এই email বা phone দিয়ে account আগে থেকেই আছে; বিদ্যমান account স্বয়ংক্রিয়ভাবে পরিবর্তন করা হয়নি');
+    throw new Error('An account with this email or phone already exists and was not changed automatically.');
   }
 
   const admin = await User.create({
@@ -46,7 +46,7 @@ try {
     password: account.data.password,
     role: 'admin',
   });
-  console.log(`Admin account তৈরি হয়েছে: ${admin.email}`);
+  console.log(`Admin account created: ${admin.email}`);
 } finally {
   await mongoose.disconnect();
 }

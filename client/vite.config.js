@@ -1,10 +1,18 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// ডেভেলপমেন্টে /api রিকোয়েস্ট ব্যাকএন্ডে (পোর্ট ৫০০০) চলে যাবে, তাই কুকি ঠিকমতো কাজ করে
 export default defineConfig({
   plugins: [react()],
-  server: { port: 5173, proxy: { '/api': 'http://localhost:5000' } },
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': 'http://localhost:5001',
+      '/socket.io': {
+        target: 'http://localhost:5001',
+        ws: true,
+      },
+    },
+  },
   build: {
     rollupOptions: {
       output: {
