@@ -30,7 +30,7 @@ async function writeAudit(actorId, action, targetType, targetId, metadata = {}) 
 
 export async function listUsers(req, res) {
   const users = await User.find()
-    .select('name email phone role trustScore runnerLimit isActive verificationStatus avgRating reviewCount createdAt')
+    .select('name email phone role avatarUrl area age emergencyContact trustScore runnerLimit isActive verificationStatus avgRating reviewCount createdAt')
     .sort({ createdAt: -1 })
     .limit(500)
     .lean();

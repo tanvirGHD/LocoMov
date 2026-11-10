@@ -10,9 +10,36 @@ export async function ensureDemoUsers() {
   if (process.env.NODE_ENV === 'production') return;
 
   const demoAccounts = [
-    { name: 'Demo Customer', email: 'customer@gmail.com', phone: '+8801712345671', password: 'customer', role: 'customer' },
-    { name: 'Demo Runner', email: 'runner@gmail.com', phone: '+8801812345672', password: 'runner12', role: 'runner' },
-    { name: 'Demo Admin', email: 'admin@gmail.com', phone: '+8801912345673', password: 'admin123', role: 'admin' },
+    {
+      name: 'Demo Customer',
+      email: 'customer@gmail.com',
+      phone: '+8801712345671',
+      password: 'customer',
+      role: 'customer',
+      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
+      area: 'Dhanmondi, Dhaka',
+      age: 26,
+    },
+    {
+      name: 'Demo Runner',
+      email: 'runner@gmail.com',
+      phone: '+8801812345672',
+      password: 'runner12',
+      role: 'runner',
+      avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
+      area: 'Gulshan 2, Dhaka',
+      age: 24,
+    },
+    {
+      name: 'Demo Admin',
+      email: 'admin@gmail.com',
+      phone: '+8801912345673',
+      password: 'admin123',
+      role: 'admin',
+      avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80',
+      area: 'Banani, Dhaka',
+      age: 32,
+    },
   ];
 
   for (const account of demoAccounts) {
@@ -25,6 +52,9 @@ export async function ensureDemoUsers() {
         phone: account.phone,
         password: account.password,
         role: account.role,
+        avatarUrl: account.avatarUrl,
+        area: account.area,
+        age: account.age,
         isActive: true,
         trustScore: account.role === 'runner' ? 100 : 0,
         runnerLimit: account.role === 'runner' ? 50000 : 0,
@@ -33,13 +63,22 @@ export async function ensureDemoUsers() {
     }
 
     const runnerLimitNeeded = account.role === 'runner' && (!existing.runnerLimit || existing.runnerLimit < 50000);
-    const needsActivation = existing.isActive !== true || existing.role !== account.role || existing.name !== account.name || runnerLimitNeeded;
-    if (needsActivation) {
+    const needsUpdate = existing.isActive !== true ||
+      existing.role !== account.role ||
+      existing.name !== account.name ||
+      !existing.avatarUrl ||
+      !existing.area ||
+      runnerLimitNeeded;
+
+    if (needsUpdate) {
       await User.updateOne({ _id: existing._id }, {
         $set: {
           name: account.name,
           role: account.role,
           isActive: true,
+          avatarUrl: existing.avatarUrl || account.avatarUrl,
+          area: existing.area || account.area,
+          age: existing.age || account.age,
           trustScore: account.role === 'runner' ? 100 : existing.trustScore || 0,
           runnerLimit: account.role === 'runner' ? Math.max(50000, existing.runnerLimit || 0) : existing.runnerLimit || 0,
         },

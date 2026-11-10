@@ -1,4 +1,4 @@
-import { ArrowRightFromLine, ArrowUpRight, Bell, Globe2, LayoutDashboard, LogOut, UserCircle2 } from 'lucide-react';
+import { ArrowRightFromLine, ArrowUpRight, Bell, Globe2, LayoutDashboard, LogOut, ShieldCheck, UserCircle2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
@@ -140,9 +140,48 @@ export default function Navbar({ language = 'en', setLanguage }) {
                   )}
                 </div>}
               </div>
-              <span className="nav-user"><UserCircle2 size={14} />{user.name}</span>
               <Link to="/dashboard" className="nav-dashboard"><LayoutDashboard size={15} /> <span>{t.dashboard}</span></Link>
-              <button className="nav-logout" onClick={handleLogout} type="button">
+
+              <div className="nav-user-corner" title={`${user.name} · ${user.area || 'Neighborhood'}`}>
+                <div className="nav-avatar-ring">
+                  {user.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.name}
+                      className="nav-avatar-img"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const fallback = e.currentTarget.parentElement?.querySelector('.nav-avatar-fallback');
+                        if (fallback) fallback.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    className="nav-avatar-fallback"
+                    style={{ display: user.avatarUrl ? 'none' : 'flex' }}
+                  >
+                    {user.name?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <span className="nav-online-dot" title="Active" />
+                </div>
+
+                <div className="nav-user-text">
+                  <span className="nav-user-name">{user.name}</span>
+                  {user.role === 'admin' ? (
+                    <span className="nav-admin-prominent-badge">
+                      <ShieldCheck size={11} /> ADMIN
+                    </span>
+                  ) : (
+                    <span className={`nav-user-role-badge role-${user.role}`}>
+                      {user.role === 'runner'
+                        ? (user.verificationStatus === 'pending' ? 'Runner (Pending)' : 'Verified Runner')
+                        : 'Customer'}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <button className="nav-logout" onClick={handleLogout} type="button" aria-label={t.logout} title={t.logout}>
                 <ArrowRightFromLine size={15} />
                 <span>{t.logout}</span>
               </button>

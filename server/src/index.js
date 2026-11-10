@@ -13,6 +13,7 @@ import { parse } from 'cookie';
 import { connectDB } from './config/db.js';
 import routes from './routes/index.js';
 import { registerSocketChatHandlers } from './controllers/chatController.js';
+import { recordVisit } from './utils/trafficTracker.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -25,10 +26,18 @@ const io = new Server(httpServer, {
 });
 
 app.set('io', io);
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 app.use(express.json({ limit: '32kb' }));
 app.use(cookieParser());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+app.use((req, res, next) => {
+  const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip;
+  recordVisit(clientIp);
+  next();
+});
 
 app.use('/api', routes);
 

@@ -6,6 +6,7 @@ import Review from '../models/Review.js';
 import Conversation from '../models/Conversation.js';
 import { createNotification, seedSystemMessageForJob, syncConversationForTask } from './chatController.js';
 import { createOtp, decryptOtp, encryptOtp, verifyOtp } from '../utils/otp.js';
+import { getVisitorAnalytics } from '../utils/trafficTracker.js';
 
 const pointInput = z.object({
   latitude: z.number().min(-90).max(90),
@@ -717,9 +718,15 @@ export async function dashboard(req, res) {
     { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
     { $sort: { _id: 1 } },
   ]);
+  let visitorStats = null;
+  if (req.user.role === 'admin') {
+    visitorStats = await getVisitorAnalytics();
+  }
+
   return res.json({
     stats: { total, pending, active, completed },
     activity: chart.map(({ _id, count }) => ({ date: _id, count })),
     recentTasks: recentTasks.map((task) => publicTask(task, req.user._id)),
+    visitorStats,
   });
 }

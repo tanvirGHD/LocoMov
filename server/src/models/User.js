@@ -51,6 +51,33 @@ const userSchema = new Schema({
     required: true,
     index: true,
   },
+  avatarUrl: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  area: {
+    type: String,
+    default: '',
+    trim: true,
+    maxlength: [120, 'Area cannot exceed 120 characters'],
+  },
+  age: {
+    type: Number,
+    min: [18, 'Must be at least 18 years old'],
+    max: [120, 'Please enter a valid age'],
+    default: null,
+  },
+  emergencyContact: {
+    type: String,
+    default: '',
+    trim: true,
+    maxlength: [20, 'Emergency contact number is too long'],
+  },
+  locationCoordinates: {
+    lat: { type: Number, default: null },
+    lng: { type: Number, default: null },
+  },
   isActive: {
     type: Boolean,
     default: true,

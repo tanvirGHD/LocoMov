@@ -8,6 +8,7 @@ import ReviewModal from '../components/ReviewModal';
 import AdminControlPanel from '../components/AdminControlPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
+import { ShieldCheck, Eye, Users, Lock, Activity, Globe } from 'lucide-react';
 
 const dhaka = [23.8103, 90.4126];
 const taskIcon = L.divIcon({ className: 'map-marker-wrap', html: '<span class="map-marker"><i></i></span>', iconSize: [26, 34], iconAnchor: [13, 30] });
@@ -922,7 +923,18 @@ export default function Home({ language = 'en' }) {
           <div className="eyebrow"><span className="eyebrow-dot" />{user.role === 'runner' ? uiText.header.runner : user.role === 'admin' ? uiText.header.admin : uiText.header.customer}</div>
           <h1>{user.role === 'runner' ? uiText.header.runnerTitle(user.name.split(' ')[0]) : user.role === 'admin' ? uiText.header.adminTitle : uiText.header.customerTitle(user.name.split(' ')[0])}</h1>
           <p>{user.role === 'runner' ? uiText.header.runnerText : user.role === 'admin' ? uiText.header.adminText : uiText.header.customerText}</p>
-          <div className="profile-chip"><span className="profile-avatar">{user.name.slice(0, 1).toUpperCase()}</span><div><b>{user.name}</b><small>{user.role === 'runner' ? uiText.header.runnerRole : user.role === 'admin' ? uiText.header.adminRole : uiText.header.customerRole}</small></div></div>
+          <div className="profile-chip">
+            {user.avatarUrl ? (
+              <img src={user.avatarUrl} alt={user.name} className="profile-avatar-img" />
+            ) : (
+              <span className="profile-avatar">{user.name.slice(0, 1).toUpperCase()}</span>
+            )}
+            <div>
+              <b>{user.name}</b>
+              <small>{user.role === 'runner' ? uiText.header.runnerRole : user.role === 'admin' ? uiText.header.adminRole : uiText.header.customerRole}</small>
+              {user.area && <span className="profile-area-tag"> · 📍 {user.area}</span>}
+            </div>
+          </div>
         </div>
 
         <div className="dashboard-visual" aria-label="Local service workflow image">
@@ -951,7 +963,7 @@ export default function Home({ language = 'en' }) {
         {user.role === 'runner' && <StatCard icon="৳" label={uiText.stats.limit} value={money(user.runnerLimit)} tone="stat-blue" />}
       </section>
 
-      {user.role === 'admin' && <AdminControlPanel language={language} users={adminUsers} onNotice={setNotice} onUsersChange={load} />}
+      {user.role === 'admin' && <AdminControlPanel language={language} users={adminUsers} tasks={tasks} onNotice={setNotice} onUsersChange={load} />}
 
       <div className="dashboard-grid">
         <section className="panel activity-panel">

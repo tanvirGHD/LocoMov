@@ -16,7 +16,12 @@ async function request(path, options = {}) {
 const json = (method, body) => ({ method, body: JSON.stringify(body) });
 
 export const api = {
-  register: (body) => request('/auth/register', json('POST', body)),
+  register: (body) => {
+    if (typeof FormData !== 'undefined' && body instanceof FormData) {
+      return request('/auth/register', { method: 'POST', body });
+    }
+    return request('/auth/register', json('POST', body));
+  },
   login: (body) => request('/auth/login', json('POST', body)),
   logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me'),

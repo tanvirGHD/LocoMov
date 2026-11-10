@@ -22,6 +22,7 @@ import {
   updateDeliveryStatus,
 } from '../controllers/taskController.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { handleAvatarUpload } from '../middleware/upload.js';
 import {
   adminBulkDeleteTasks,
   adminDeleteConversation,
@@ -75,7 +76,7 @@ const actionLimiter = rateLimit({
   message: { message: 'Rate limit reached. Please try again shortly.' },
 });
 
-router.post('/auth/register', authLimiter, wrap(register));
+router.post('/auth/register', authLimiter, handleAvatarUpload, wrap(register));
 router.post('/auth/login', authLimiter, wrap(login));
 router.post('/auth/logout', logout);
 router.get('/auth/me', requireAuth, wrap(me));
