@@ -69,7 +69,7 @@
 //   res.status(500).json({ message: 'Something went wrong on the server.' });
 // });
 
-// const defaultPort = Number(process.env.PORT) || 5001;
+// const defaultPort = Number(process.env.PORT) || 5000;
 
 // function startServer(port) {
 //   const server = httpServer.listen(port, '127.0.0.1', () => {
@@ -131,8 +131,6 @@
 
 
 
-import dns from 'node:dns';
-dns.setServers(['8.8.8.8', '1.1.1.1']);
 import 'dotenv/config';
 import http from 'node:http';
 import express from 'express';
@@ -246,7 +244,7 @@ app.use((err, req, res, next) => {
 });
 
 // ---------- Local / Render: server চালু করা ----------
-const defaultPort = Number(process.env.PORT) || 5001;
+const defaultPort = Number(process.env.PORT) || 5000;
 const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1';
 
 function startServer(port) {

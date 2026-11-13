@@ -1,9 +1,10 @@
-import dns from 'node:dns';
-dns.setServers(['8.8.8.8', '1.1.1.1']);
 import mongoose from 'mongoose';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import User from '../models/User.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let memoryServer;
 
 export async function ensureDemoUsers() {
@@ -125,7 +126,9 @@ export async function connectDB() {
 
   if (process.env.NODE_ENV !== 'production' && !memoryServer) {
     console.warn('No persistent MongoDB instance available. Using in-memory fallback (data will reset on restart).');
-    memoryServer = await MongoMemoryServer.create();
+    memoryServer = await MongoMemoryServer.create({
+      binary: { downloadDir: path.join(__dirname, '../../data/mongodb-binaries') },
+    });
     await mongoose.connect(memoryServer.getUri());
     await ensureDemoUsers();
     console.log('MongoDB connected using in-memory fallback.');

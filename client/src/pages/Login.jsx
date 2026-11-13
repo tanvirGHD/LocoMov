@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -51,6 +51,7 @@ const content = {
 export default function Login({ language = 'en' }) {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -69,7 +70,8 @@ export default function Login({ language = 'en' }) {
     setBusy(true);
     try {
       await login(form);
-      navigate('/dashboard');
+      const taskId = new URLSearchParams(location.search).get('taskId');
+      navigate(taskId ? `/dashboard?taskId=${encodeURIComponent(taskId)}#tasks` : '/dashboard');
     } catch (requestError) {
       setError(requestError.message);
     } finally {

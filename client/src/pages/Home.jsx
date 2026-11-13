@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Circle, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -8,7 +9,7 @@ import ReviewModal from '../components/ReviewModal';
 import AdminControlPanel from '../components/AdminControlPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, Eye, Users, Lock, Activity, Globe } from 'lucide-react';
+import { Bike, MapPin, ShieldCheck, Eye, Users, Lock, Activity, Globe } from 'lucide-react';
 
 const dhaka = [23.8103, 90.4126];
 const taskIcon = L.divIcon({ className: 'map-marker-wrap', html: '<span class="map-marker"><i></i></span>', iconSize: [26, 34], iconAnchor: [13, 30] });
@@ -219,8 +220,9 @@ function TaskMap({ tasks, center, radius = false }) {
   );
 }
 
-function StatCard({ icon, label, value, tone = '' }) {
-  const displayValue = typeof value === 'number' ? value.toLocaleString('bn-BD') : value || '০';
+function StatCard({ icon, label, value, tone = '', language = 'en' }) {
+  const locale = language === 'bn' ? 'bn-BD' : 'en-US';
+  const displayValue = typeof value === 'number' ? value.toLocaleString(locale) : value || (language === 'bn' ? '০' : '0');
   return <article className={`stat-card ${tone}`}><span className="stat-icon">{icon}</span><div><span>{label}</span><b>{displayValue}</b></div></article>;
 }
 
@@ -347,7 +349,7 @@ function TaskCard({ task, user, onRefresh, onError, bids, setBids, runnerPositio
   }
 
   return (
-    <article className="task-card">
+    <article className="task-card" id={`task-card-${task._id}`}>
       <div className="task-card-top">
         {isAdmin && <label className="admin-select"><input type="checkbox" checked={Boolean(selected)} onChange={() => onToggleSelect?.(task._id)} /> {copy.select}</label>}
         <span className={`status-pill status-${task.status}`}>{statusNames[task.status] || task.status}</span>
@@ -430,7 +432,10 @@ function TaskCard({ task, user, onRefresh, onError, bids, setBids, runnerPositio
 
 export default function Home({ language = 'en' }) {
   const { user, refreshUser } = useAuth();
+  const { search } = useLocation();
+  const focusTaskId = new URLSearchParams(search).get('taskId');
   const isBn = language === 'bn';
+  const DashboardRoleIcon = user.role === 'runner' ? Bike : user.role === 'admin' ? ShieldCheck : MapPin;
   const statusNames = statusNamesByLanguage[language] || statusNamesByLanguage.en;
   const deliveryStages = deliveryStagesByLanguage[language] || deliveryStagesByLanguage.en;
   const uiText = isBn ? {
@@ -832,6 +837,17 @@ export default function Home({ language = 'en' }) {
   const visibleTasks = user.role === 'runner'
     ? filteredTasks
     : tasks;
+
+  useEffect(() => {
+    if (!focusTaskId || loading) return undefined;
+    const taskCard = document.getElementById(`task-card-${focusTaskId}`);
+    if (!taskCard) return undefined;
+    taskCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    taskCard.classList.add('task-card-focus');
+    const timeoutId = window.setTimeout(() => taskCard.classList.remove('task-card-focus'), 2600);
+    return () => window.clearTimeout(timeoutId);
+  }, [focusTaskId, loading, visibleTasks.length]);
+
   const openDisputes = tasks.filter((task) => task.disputeStatus === 'open');
 
   const updateForm = (key, value) => setForm((current) => ({ ...current, [key]: value }));
@@ -918,9 +934,12 @@ export default function Home({ language = 'en' }) {
 
   return (
     <div className="dashboard-page page-width">
-      <section className="dashboard-welcome">
+      <section className={`dashboard-welcome ${user.role === 'admin' ? 'dashboard-welcome-admin' : ''}`}>
         <div className="dashboard-welcome-copy">
-          <div className="eyebrow"><span className="eyebrow-dot" />{user.role === 'runner' ? uiText.header.runner : user.role === 'admin' ? uiText.header.admin : uiText.header.customer}</div>
+          <div className={`eyebrow dashboard-role-eyebrow role-${user.role}`}>
+            <span className="dashboard-role-icon"><DashboardRoleIcon size={14} strokeWidth={2.4} /></span>
+            <span className="dashboard-role-label">{user.role === 'runner' ? uiText.header.runner : user.role === 'admin' ? uiText.header.admin : uiText.header.customer}</span>
+          </div>
           <h1>{user.role === 'runner' ? uiText.header.runnerTitle(user.name.split(' ')[0]) : user.role === 'admin' ? uiText.header.adminTitle : uiText.header.customerTitle(user.name.split(' ')[0])}</h1>
           <p>{user.role === 'runner' ? uiText.header.runnerText : user.role === 'admin' ? uiText.header.adminText : uiText.header.customerText}</p>
           <div className="profile-chip">
@@ -955,12 +974,12 @@ export default function Home({ language = 'en' }) {
       {notice && <div className={notice.includes('পোস্ট হয়েছে') || notice.includes('পাঠানো হয়েছে') ? 'notice notice-success' : 'notice'} role="status">{notice}<button onClick={() => setNotice('')} aria-label="বার্তা বন্ধ করুন">×</button></div>}
 
       <section className="stats-grid dashboard-stats">
-        <StatCard icon="▣" label={uiText.stats.total} value={dashboard.stats.total} />
-        <StatCard icon="◷" label={uiText.stats.pending} value={dashboard.stats.pending} tone="stat-amber" />
-        <StatCard icon="⌁" label={uiText.stats.active} value={dashboard.stats.active} tone="stat-blue" />
-        <StatCard icon="✓" label={uiText.stats.completed} value={dashboard.stats.completed} tone="stat-green" />
-        {user.role === 'runner' && <StatCard icon="✦" label={uiText.stats.trust} value={user.trustScore} tone="stat-green" />}
-        {user.role === 'runner' && <StatCard icon="৳" label={uiText.stats.limit} value={money(user.runnerLimit)} tone="stat-blue" />}
+        <StatCard icon="▣" label={uiText.stats.total} value={dashboard.stats.total} language={language} />
+        <StatCard icon="◷" label={uiText.stats.pending} value={dashboard.stats.pending} tone="stat-amber" language={language} />
+        <StatCard icon="⌁" label={uiText.stats.active} value={dashboard.stats.active} tone="stat-blue" language={language} />
+        <StatCard icon="✓" label={uiText.stats.completed} value={dashboard.stats.completed} tone="stat-green" language={language} />
+        {user.role === 'runner' && <StatCard icon="✦" label={uiText.stats.trust} value={user.trustScore} tone="stat-green" language={language} />}
+        {user.role === 'runner' && <StatCard icon="৳" label={uiText.stats.limit} value={money(user.runnerLimit)} tone="stat-blue" language={language} />}
       </section>
 
       {user.role === 'admin' && <AdminControlPanel language={language} users={adminUsers} tasks={tasks} onNotice={setNotice} onUsersChange={load} />}
@@ -1009,7 +1028,7 @@ export default function Home({ language = 'en' }) {
         <button className="button button-primary" onClick={locateRunner} disabled={locationLoading}>{locationLoading ? (isBn ? 'অবস্থান খুঁজছি...' : 'Finding location...') : runnerPosition ? (isBn ? 'কাজ খুঁজুন' : 'Find jobs') : (isBn ? 'অবস্থান শেয়ার করুন' : 'Share location')}</button>
       </section>}
 
-      <section className="tasks-section">
+      <section className="tasks-section" id="tasks">
         <div className="panel-heading tasks-heading"><div><span className="panel-kicker">{user.role === 'runner' ? (isBn ? 'আপনার রুটে' : 'Your route') : (isBn ? 'আপনার কাজগুলো' : 'Your tasks')}</span><h2>{user.role === 'runner' ? (isBn ? 'সব খোলা কাজ' : 'All open jobs') : user.role === 'admin' ? (isBn ? 'সাম্প্রতিক কাজ' : 'Recent tasks') : (isBn ? 'আমার কাজ' : 'My jobs')}</h2></div>
           <button className="button button-outline button-small" onClick={() => { load(); refreshNearby(); }} disabled={loading}>{loading ? (isBn ? 'লোড হচ্ছে...' : 'Loading...') : (isBn ? '↻ হালনাগাদ' : '↻ Refresh')}</button>
         </div>

@@ -31,7 +31,7 @@ A neighborhood-based micro-delivery and local task network for Bangladesh. Custo
    npm run dev:client
    ```
 
-4. Open `http://localhost:5173` and create an account as a customer or runner. During development, Vite forwards `/api` requests to the server running at `http://localhost:5000`.
+4. Open `http://localhost:5173` and create an account as a customer or runner. The server prefers port 5000, but retries on 5001 if that port is occupied; the local Vite proxy is set to 5001 for this machine.
 
 ### Demo Accounts
 

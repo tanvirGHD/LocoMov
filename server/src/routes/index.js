@@ -14,6 +14,7 @@ import {
   getTask,
   listBids,
   listTasks,
+  listPublicTasks,
   nearbyTasks,
   openDispute,
   resolveDispute,
@@ -81,6 +82,7 @@ router.post('/auth/login', authLimiter, wrap(login));
 router.post('/auth/logout', logout);
 router.get('/auth/me', requireAuth, wrap(me));
 
+router.get('/tasks/public', wrap(listPublicTasks));
 router.use(requireAuth);
 router.get('/dashboard', wrap(dashboard));
 router.get('/admin/users', requireRole('admin'), wrap(listUsers));

@@ -27,6 +27,7 @@ export const api = {
   me: () => request('/auth/me'),
   dashboard: () => request('/dashboard'),
   tasks: () => request('/tasks'),
+  publicTasks: () => request('/tasks/public'),
   nearby: (latitude, longitude) => request(`/tasks/nearby?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}&radiusKm=25`),
   createTask: (body) => request('/tasks', json('POST', body)),
   deleteTask: (id) => request(`/tasks/${id}`, { method: 'DELETE' }),

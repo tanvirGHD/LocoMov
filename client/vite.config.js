@@ -6,10 +6,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://https://locomov-server.onrender.com',
-      '/uploads': 'http://https://locomov-server.onrender.com',
+      '/api': 'http://127.0.0.1:5001',
+      '/uploads': 'http://127.0.0.1:5001',
       '/socket.io': {
-        target: 'http://https://locomov-server.onrender.com',
+        target: 'http://127.0.0.1:5001',
         ws: true,
       },
     },

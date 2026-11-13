@@ -176,6 +176,43 @@ export async function listTasks(req, res) {
   return res.json({ tasks: filtered });
 }
 
+function publicTaskArea(address = '') {
+  const neighborhoods = [
+    'Azimpur', 'Dhanmondi', 'Gulshan', 'Banani', 'Uttara', 'Mirpur', 'Mohammadpur',
+    'Bashundhara', 'Badda', 'Motijheel', 'Farmgate', 'Green Road', 'Nilkhet',
+    'Lalmatia', 'Tejgaon', 'Rampura', 'Wari', 'Old Dhaka',
+  ];
+  const normalized = String(address).toLowerCase();
+  const neighborhood = neighborhoods.find((area) => normalized.includes(area.toLowerCase()));
+  return neighborhood || 'Dhaka';
+}
+
+export async function listPublicTasks(req, res) {
+  const tasks = await Task.find({
+    status: 'pending',
+    runnerId: null,
+    disputeStatus: 'none',
+  })
+    .select('title estimatedPrice finalPrice status pickupAddress deliveryAddress createdAt customerId')
+    .populate('customerId', 'name')
+    .sort({ createdAt: -1 })
+    .limit(8)
+    .lean();
+
+  return res.json({
+    tasks: tasks.map((task) => ({
+      id: String(task._id),
+      title: task.title,
+      pickupArea: publicTaskArea(task.pickupAddress),
+      deliveryArea: publicTaskArea(task.deliveryAddress),
+      price: task.finalPrice || task.estimatedPrice,
+      status: task.status,
+      customerName: task.customerId?.name?.trim().split(/\s+/)[0] || null,
+      createdAt: task.createdAt,
+    })),
+  });
+}
+
 export async function nearbyTasks(req, res) {
   const lat = Number(req.query.lat);
   const lng = Number(req.query.lng);

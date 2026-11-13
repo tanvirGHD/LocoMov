@@ -1,5 +1,5 @@
 import { ArrowRightFromLine, ArrowUpRight, Bell, Globe2, LayoutDashboard, LogOut, ShieldCheck, UserCircle2 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -28,10 +28,12 @@ const translations = {
 export default function Navbar({ language = 'en', setLanguage }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const t = translations[language] || translations.en;
+  const showLandingLinks = location.pathname === '/';
 
   const fetchNotifications = async () => {
     if (!user) return;
@@ -100,10 +102,16 @@ export default function Navbar({ language = 'en', setLanguage }) {
     <header className="navbar">
       <div className="navbar-inner">
         <Link to="/" className="brand" aria-label={t.brand}>
-          <img className="brand-logo" src="/locomuv-logo.png" alt="" />
-          <span>Loco<b>Muv</b></span>
+          <span className="brand-logo-crop"><img className="brand-logo" src="/locomuv-logo.png" alt="" /></span>
+          <span className="brand-wordmark">Loco<b>Muv</b></span>
         </Link>
         <nav className="nav-actions" aria-label={t.nav}>
+          {showLandingLinks && <div className="landing-nav-links">
+            <a href="#how-it-works">{language === 'bn' ? 'যেভাবে কাজ করে' : 'How it works'}</a>
+            <a href="#trust">{language === 'bn' ? 'নিরাপত্তা' : 'Safety & trust'}</a>
+            <a href="#errands">{language === 'bn' ? 'সাম্প্রতিক কাজ' : 'Recent errands'}</a>
+            <a href="#faq">FAQ</a>
+          </div>}
           <button type="button" className="language-switch" onClick={toggleLanguage} aria-label="Toggle language">
             <Globe2 size={15} />
             <span>{language === 'en' ? 'EN / বাংলা' : 'বাংলা / EN'}</span>
@@ -140,7 +148,7 @@ export default function Navbar({ language = 'en', setLanguage }) {
                   )}
                 </div>}
               </div>
-              <Link to="/dashboard" className="nav-dashboard"><LayoutDashboard size={15} /> <span>{t.dashboard}</span></Link>
+              <Link to="/dashboard" className="nav-dashboard" aria-label={t.dashboard} title={t.dashboard}><LayoutDashboard size={15} /> <span>{t.dashboard}</span></Link>
 
               <div className="nav-user-corner" title={`${user.name} · ${user.area || 'Neighborhood'}`}>
                 <div className="nav-avatar-ring">
