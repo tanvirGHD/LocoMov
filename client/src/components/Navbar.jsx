@@ -121,12 +121,6 @@ export default function Navbar({ language = 'en', setLanguage, hideProfile = fal
               <span>{language === 'en' ? 'EN / বাংলা' : 'বাংলা / EN'}</span>
             </button>
           )}
-          {!isAdminDashboard && (
-            <button type="button" className="language-switch" onClick={toggleLanguage} aria-label="Toggle language">
-              <Globe2 size={15} />
-              <span>{language === 'en' ? 'EN / বাংলা' : 'বাংলা / EN'}</span>
-            </button>
-          )}
           {user ? (
             <>
               {!isAdminDashboard && (
