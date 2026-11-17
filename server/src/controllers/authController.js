@@ -1,11 +1,12 @@
-import fs from 'node:fs';
+﻿import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import jwt from 'jsonwebtoken';
+import sharp from 'sharp';
 import { z } from 'zod';
 import User from '../models/User.js';
 import Review from '../models/Review.js';
+import { registrationCodesValid } from './authSecurityController.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,18 +39,19 @@ const registerSchema = z.object({
   password: z.string()
     .min(8, 'Password must be at least 8 characters long')
     .max(128, 'Password cannot exceed 128 characters')
-    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Password must contain at least one uppercase letter, one lowercase letter, and one number'),
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Password must contain at least one uppercase letter, one lowercase letter, and one number')
+    .refine((value) => !/(.)\1{3,}/i.test(value) && !/(?:0123|1234|2345|3456|4567|5678|6789|abcd|bcde|cdef|qwer|asdf)/i.test(value), 'Choose a less common password.'),
   role: z.enum(['customer', 'runner']).default('customer'),
   area: z.string().trim()
     .min(2, 'Please specify your current area or neighborhood (where you live)')
     .max(120, 'Area cannot exceed 120 characters'),
-  age: z.coerce.number()
-    .int('Age must be a whole number')
-    .min(18, 'You must be at least 18 years old to join LocoMuv')
-    .max(120, 'Please enter a valid age'),
+  dateOfBirth: z.coerce.date(),
   emergencyContact: z.string().trim().max(20).optional().default(''),
   avatarUrl: z.string().trim().optional().default(''),
   avatarDataUrl: z.string().optional().default(''),
+  emailCode: z.string().regex(/^\d{6}$/).optional(),
+  phoneCode: z.string().regex(/^\d{6}$/).optional(),
+  termsAccepted: z.coerce.boolean().refine(Boolean, 'You must accept the Terms and Privacy Policy.'),
   locationCoordinates: z.union([
     z.string().transform((val) => {
       try {
@@ -67,11 +69,6 @@ const registerSchema = z.object({
   ]).optional().nullable(),
 });
 
-const loginSchema = z.object({
-  email: z.string().trim().email('Please enter a valid email'),
-  password: z.string().min(1, 'Please enter your password').max(128),
-});
-
 export function publicUser(user) {
   return {
     id: user._id,
@@ -81,7 +78,9 @@ export function publicUser(user) {
     role: user.role,
     avatarUrl: user.avatarUrl || '',
     area: user.area || '',
-    age: user.age || null,
+    age: user.age || (user.dateOfBirth ? Math.floor((Date.now() - new Date(user.dateOfBirth).getTime()) / 31557600000) : null),
+    dateOfBirth: user.dateOfBirth || null,
+    permissions: user.permissions || [],
     emergencyContact: user.emergencyContact || '',
     locationCoordinates: user.locationCoordinates || null,
     trustScore: user.trustScore,
@@ -93,30 +92,14 @@ export function publicUser(user) {
   };
 }
 
-function createSession(res, user) {
-  const token = jwt.sign({ id: String(user._id) }, process.env.JWT_SECRET, { expiresIn: '7d' });
-  res.cookie('token', token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    path: '/',
-  });
-}
-
-function saveAvatarBuffer(buffer, mimeType) {
+async function saveAvatarBuffer(buffer, mimeType) {
   if (!isValidImageMagicBytes(buffer)) {
     throw new Error('The uploaded file does not match a valid image signature (JPG, PNG, or WebP).');
   }
-  const mimeToExt = {
-    'image/jpeg': '.jpg',
-    'image/png': '.png',
-    'image/webp': '.webp',
-  };
-  const ext = mimeToExt[mimeType] || '.jpg';
-  const filename = `avatar-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType) || buffer.length > 2 * 1024 * 1024) throw new Error('Profile photo must be JPG, PNG, or WebP and no larger than 2 MB.');
+  const filename = `avatar-${crypto.randomBytes(16).toString('hex')}.jpg`;
   const filePath = path.join(uploadRoot, filename);
-  fs.writeFileSync(filePath, buffer);
+  await sharp(buffer).rotate().jpeg({ quality: 88 }).toFile(filePath);
   return `/uploads/${filename}`;
 }
 
@@ -133,42 +116,44 @@ export async function register(req, res) {
     password,
     role,
     area,
-    age,
+    dateOfBirth,
     emergencyContact,
     avatarUrl: inputAvatarUrl,
     avatarDataUrl,
     locationCoordinates,
   } = parsed.data;
 
-  // Process profile photo
+  const age = dateOfBirth ? Math.floor((Date.now() - new Date(dateOfBirth).getTime()) / 31557600000) : null;
+  if (age !== null && (age < 18 || age > 120)) return res.status(400).json({ message: 'You must be at least 18 years old to join LocoMuv.' });
+  if (role === 'runner' && !emergencyContact) return res.status(400).json({ message: 'Runner accounts require an emergency contact.' });
+  const easyMode = process.env.NODE_ENV !== 'production' || process.env.EASY_REGISTRATION === 'true';
+  const codesEnabled = process.env.ENABLE_AUTH_CODES === 'true';
+  if (codesEnabled) {
+    if (!parsed.data.emailCode || !parsed.data.phoneCode) return res.status(400).json({ message: 'Email and phone verification codes are required.' });
+    if (!(await registrationCodesValid(email, phone, parsed.data.emailCode, parsed.data.phoneCode))) return res.status(400).json({ message: 'Email or phone verification code is invalid or expired.' });
+  }
+
+  // Process profile photo (optional)
   let finalAvatarUrl = inputAvatarUrl || '';
 
   if (req.file) {
     try {
-      finalAvatarUrl = saveAvatarBuffer(req.file.buffer, req.file.mimetype);
+      finalAvatarUrl = await saveAvatarBuffer(req.file.buffer, req.file.mimetype);
     } catch (err) {
-      return res.status(400).json({ message: err.message || 'Invalid profile photo uploaded.' });
+      if (!easyMode) return res.status(400).json({ message: err.message || 'Invalid profile photo uploaded.' });
     }
   } else if (avatarDataUrl && avatarDataUrl.startsWith('data:image/')) {
-    // Handle camera capture data URL
     try {
       const match = avatarDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
       if (match) {
         const mimeType = match[1];
         const base64Data = match[2];
         const buffer = Buffer.from(base64Data, 'base64');
-        if (buffer.length > 5 * 1024 * 1024) {
-          return res.status(400).json({ message: 'Captured photo exceeds 5 MB limit.' });
-        }
-        finalAvatarUrl = saveAvatarBuffer(buffer, mimeType);
+        if (buffer.length <= 2 * 1024 * 1024) finalAvatarUrl = await saveAvatarBuffer(buffer, mimeType);
       }
     } catch (err) {
-      return res.status(400).json({ message: 'Could not process captured photo.' });
+      if (!easyMode) return res.status(400).json({ message: 'Could not process captured photo.' });
     }
-  }
-
-  if (!finalAvatarUrl) {
-    return res.status(400).json({ message: 'A real profile photo of yourself is required to register.' });
   }
 
   // Format and validate phone
@@ -214,18 +199,19 @@ export async function register(req, res) {
       password,
       role,
       avatarUrl: finalAvatarUrl,
-      area,
-      age,
+      area: area || 'Dhaka',
+      age: age || null,
+      dateOfBirth: dateOfBirth || null,
       emergencyContact: formattedEmergency,
       locationCoordinates: locationCoordinates ? {
         lat: Number(locationCoordinates.lat) || null,
         lng: Number(locationCoordinates.lng) || null,
       } : null,
       verificationStatus: role === 'runner' ? 'pending' : 'approved',
+      emailVerified: codesEnabled ? !!(parsed.data.emailCode && parsed.data.phoneCode) : false,
+      phoneVerified: codesEnabled ? !!(parsed.data.emailCode && parsed.data.phoneCode) : false,
     });
-
-    createSession(res, user);
-    return res.status(201).json(publicUser(user));
+    return res.status(201).json({ message: 'Account created. Please sign in.', user: publicUser(user), authenticated: false });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(409).json({ message: 'An account already exists with this email or phone number.' });
@@ -234,22 +220,59 @@ export async function register(req, res) {
   }
 }
 
-export async function login(req, res) {
-  const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: 'Please enter a valid email and password.' });
-
-  const user = await User.findOne({ email: parsed.data.email.toLowerCase() }).select('+password');
-  if (!user || !(await user.verifyPassword(parsed.data.password))) {
-    return res.status(401).json({ message: 'Incorrect email or password.' });
+export async function updateProfile(req, res) {
+  const isFormData = req.body instanceof FormData;
+  let name, email, phone, area, avatarFile;
+  if (isFormData) {
+    name = req.body.get('name');
+    email = req.body.get('email');
+    phone = req.body.get('phone');
+    area = req.body.get('area');
+    avatarFile = req.file;
+  } else {
+    const schema = z.object({
+      name: z.string().trim().min(2, 'Name must be at least 2 characters').max(80).optional(),
+      email: z.string().trim().email('Please enter a valid email address').max(254).optional(),
+      phone: z.string().trim().min(10, 'Please enter a valid phone number').max(20).optional(),
+      area: z.string().trim().min(2, 'Area must be at least 2 characters').max(120).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
+    name = parsed.data.name;
+    email = parsed.data.email;
+    phone = parsed.data.phone;
+    area = parsed.data.area;
   }
-  if (!user.isActive) return res.status(403).json({ message: 'This account has been deactivated by an admin.' });
 
-  createSession(res, user);
-  return res.json(publicUser(user));
+  const updates = {};
+  if (name !== undefined && name !== '') updates.name = name.trim();
+  if (email !== undefined && email !== '') updates.email = email.toLowerCase();
+  if (phone !== undefined && phone !== '') {
+    const cleanPhone = phone.replace(/[^\d+]/g, '');
+    let normalizedPhone = cleanPhone;
+    if (/^01[3-9]\d{8}$/.test(cleanPhone)) normalizedPhone = `+88${cleanPhone}`;
+    else if (/^8801[3-9]\d{8}$/.test(cleanPhone)) normalizedPhone = `+${cleanPhone}`;
+    if (!/^\+8801[3-9]\d{8}$/.test(normalizedPhone)) return res.status(400).json({ message: 'Please enter a valid Bangladeshi mobile number (e.g. 017XXXXXXXX).' });
+    updates.phone = normalizedPhone;
+  }
+  if (area !== undefined && area !== '') updates.area = area.trim();
+
+  if (avatarFile) {
+    try {
+      updates.avatarUrl = await saveAvatarBuffer(avatarFile.buffer, avatarFile.mimetype);
+    } catch (err) {
+      return res.status(400).json({ message: err.message || 'Invalid profile photo uploaded.' });
+    }
+  }
+
+  const user = await User.findByIdAndUpdate(req.user._id, { $set: updates }, { new: true });
+  if (!user) return res.status(404).json({ message: 'User not found.' });
+  return res.json({ message: 'Profile updated successfully.', user: publicUser(user) });
 }
 
 export function logout(req, res) {
   res.clearCookie('token', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
+  res.clearCookie('remembered_device', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
   return res.json({ message: 'Logged out successfully.' });
 }
 

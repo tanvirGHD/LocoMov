@@ -3,17 +3,27 @@ async function request(path, options = {}) {
   if (!(typeof FormData !== 'undefined' && options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
-  const response = await fetch(`/api${path}`, {
-    credentials: 'include',
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(`/api${path}`, { credentials: 'include', ...options, headers });
+  } catch {
+    const isBn = localStorage.getItem('locomuv-language') === 'bn';
+    throw new Error(isBn ? 'সার্ভারে সংযোগ করা যাচ্ছে না, একটু পরে চেষ্টা করুন।' : 'Cannot connect to the server. Please try again later.');
+  }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || 'The request could not be completed.');
+  if (!response.ok) throw new Error(localizedMessage(data.message || (localStorage.getItem('locomuv-language') === 'bn' ? 'Request failed.' : 'Request failed. Please try again.')));
   return data;
 }
 
 const json = (method, body) => ({ method, body: JSON.stringify(body) });
+
+function localizedMessage(message) {
+  if (localStorage.getItem('locomuv-language') !== 'bn') return message;
+  if (message === 'Email or password is incorrect.') return 'ইমেইল বা পাসওয়ার্ড সঠিক নয়';
+  const locked = message.match(/^Too many failed attempts\. Try again in (\d+) minutes?\.$/);
+  if (locked) return `অনেকবার ভুল হয়েছে, ${locked[1]} মিনিট পরে চেষ্টা করুন।`;
+  return message === 'The request could not be completed.' ? 'অনুরোধটি সম্পন্ন করা যায়নি।' : message;
+}
 
 export const api = {
   register: (body) => {
@@ -23,6 +33,19 @@ export const api = {
     return request('/auth/register', json('POST', body));
   },
   login: (body) => request('/auth/login', json('POST', body)),
+  verifyLogin: (body) => request('/auth/login/verify', json('POST', body)),
+  sendRegistrationCodes: (body) => request('/auth/register/codes', json('POST', body)),
+  forgotPassword: (body) => request('/auth/forgot-password', json('POST', body)),
+  resetPassword: (body) => request('/auth/reset-password', json('POST', body)),
+  sendAccountChangeCode: (body) => request('/auth/account/change-code', json('POST', body)),
+  verifyAccountChange: (body) => request('/auth/account/change-code/verify', json('POST', body)),
+  updatePassword: (body) => request('/auth/account/password', json('PATCH', body)),
+  updateProfile: (body) => {
+    if (typeof FormData !== 'undefined' && body instanceof FormData) {
+      return request('/auth/account/profile', { method: 'PATCH', body });
+    }
+    return request('/auth/account/profile', json('PATCH', body));
+  },
   logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me'),
   dashboard: () => request('/dashboard'),
@@ -61,6 +84,9 @@ export const api = {
   adminUpdateReport: (id, status) => request(`/admin/reports/${id}`, json('PATCH', { status })),
   adminDeleteReport: (id) => request(`/admin/reports/${id}`, { method: 'DELETE' }),
   adminAudit: () => request('/admin/audit'),
+  adminSubAdmins: () => request('/admin/sub-admins'),
+  adminCreateSubAdmin: (data) => request('/admin/sub-admins', json('POST', data)),
+  adminDeleteSubAdmin: (id) => request(`/admin/sub-admins/${id}`, { method: 'DELETE' }),
   conversations: () => request('/conversations'),
   conversationByTask: (taskId) => request(`/conversations/job/${taskId}`),
   conversationMessages: (conversationId, cursor) => request(`/conversations/${conversationId}/messages${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),

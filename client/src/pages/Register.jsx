@@ -20,6 +20,8 @@ import {
   HeartHandshake
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../api';
+import Turnstile from '../components/Turnstile';
 
 const content = {
   en: {
@@ -52,7 +54,7 @@ const content = {
     phone: 'Mobile Number',
     phonePlaceholder: '01XXXXXXXXX',
     phoneHint: 'Bangladeshi mobile number',
-    age: 'Age',
+    age: 'Date of birth',
     agePlaceholder: 'e.g. 24',
     ageNotice: 'Must be 18 or older',
 
@@ -82,7 +84,7 @@ const content = {
     reqNumber: 'At least 1 number',
 
     // Extra security
-    emergencyLabel: 'Emergency Contact (Optional)',
+    emergencyLabel: 'Emergency Contact (required for runners)',
     emergencyPlaceholder: 'Close contact phone (01XXXXXXXXX)',
 
     // Safety pledge
@@ -207,7 +209,7 @@ export default function Register({ language = 'en' }) {
     role: 'customer',
     selectedArea: '',
     customAreaDetail: '',
-    age: '',
+    dateOfBirth: '',
     emergencyContact: '',
     safetyPledge: false,
   });
@@ -229,6 +231,8 @@ export default function Register({ language = 'en' }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -369,69 +373,36 @@ export default function Register({ language = 'en' }) {
     e.preventDefault();
     setError('');
 
-    if (!photoFile && !capturedDataUrl) {
-      setError('A real profile photo of yourself is required to register.');
-      return;
-    }
-
     if (form.password.length < 8) {
       setError('Password must be at least 8 characters long.');
       return;
     }
-
-    if (!hasUpper || !hasLower || !hasNumber) {
-      setError('Password must contain uppercase, lowercase letters, and at least one number.');
-      return;
-    }
-
     if (form.password !== form.confirmPassword) {
       setError('Passwords do not match. Please verify your password.');
       return;
     }
-
-    const ageNum = parseInt(form.age, 10);
-    if (isNaN(ageNum) || ageNum < 18 || ageNum > 120) {
-      setError('You must be at least 18 years old to join LocoMuv.');
-      return;
-    }
-
-    const fullArea = [form.selectedArea, form.customAreaDetail].filter(Boolean).join(' - ').trim();
-    if (!fullArea || fullArea.length < 2) {
-      setError('Please provide your current living area or neighborhood.');
-      return;
-    }
-
-    if (!form.safetyPledge) {
-      setError('Please agree to the Community Safety Pledge.');
-      return;
-    }
+    const fullArea = [form.selectedArea, form.customAreaDetail].filter(Boolean).join(' - ').trim() || 'Dhaka';
+    if (form.role === 'runner' && !form.emergencyContact.trim()) { setError('Runner accounts require an emergency contact.'); return; }
 
     setBusy(true);
-
     try {
       const formData = new FormData();
       formData.append('name', form.name.trim());
       formData.append('email', form.email.trim());
-      formData.append('phone', form.phone.trim());
+      formData.append('phone', form.phone.replace(/\D/g, ''));
       formData.append('password', form.password);
       formData.append('role', form.role);
       formData.append('area', fullArea);
-      formData.append('age', ageNum.toString());
-      if (form.emergencyContact.trim()) {
-        formData.append('emergencyContact', form.emergencyContact.trim());
-      }
-      if (coords) {
-        formData.append('locationCoordinates', JSON.stringify(coords));
-      }
-
-      if (photoFile) {
-        formData.append('avatar', photoFile);
-      } else if (capturedDataUrl) {
-        formData.append('avatarDataUrl', capturedDataUrl);
-      }
+      if (form.dateOfBirth) formData.append('dateOfBirth', form.dateOfBirth);
+      formData.append('termsAccepted', termsAccepted ? 'true' : 'false');
+      formData.append('safetyPledge', form.safetyPledge ? 'true' : 'false');
+      if (form.emergencyContact.trim()) formData.append('emergencyContact', form.emergencyContact.trim());
+      if (coords) formData.append('locationCoordinates', JSON.stringify(coords));
+      if (photoFile) formData.append('avatar', photoFile);
+      else if (capturedDataUrl) formData.append('avatarDataUrl', capturedDataUrl);
 
       await register(formData);
-      navigate('/dashboard');
+      navigate('/login');
     } catch (err) {
       setError(err.message || 'Failed to create account. Please check your information.');
     } finally {
@@ -446,7 +417,7 @@ export default function Register({ language = 'en' }) {
         <div className="reg-top-bar">
           <Link className="reg-back-link" to="/">{t.back}</Link>
           <div className="reg-safety-pill">
-            <ShieldCheck size={14} className="text-emerald-600 inline" />
+            <ShieldCheck size={14} className="text-cyan-400 inline" />
             <span>{t.eyebrow}</span>
           </div>
         </div>
@@ -496,9 +467,9 @@ export default function Register({ language = 'en' }) {
               <div className="reg-block">
                 <div className="reg-block-header">
                   <span className="reg-block-label">{t.photoTitle}</span>
-                  <span className="reg-tag-required">{t.photoRequired}</span>
+                  <span className="reg-tag-required">Optional</span>
                 </div>
-                <p className="reg-subtext">{t.photoHint}</p>
+                <p className="reg-subtext">{t.photoHint} (You can add this later.)</p>
 
                 <div className="reg-avatar-row">
                   <div className="reg-avatar-circle">
@@ -597,7 +568,6 @@ export default function Register({ language = 'en' }) {
                       value={form.selectedArea}
                       onChange={(e) => setForm({ ...form, selectedArea: e.target.value })}
                       className="reg-input"
-                      required
                     >
                       <option value="">{t.areaPlaceholder}</option>
                       {POPULAR_AREAS.map((area) => (
@@ -621,7 +591,7 @@ export default function Register({ language = 'en' }) {
 
                 {gpsStatus && (
                   <div className="reg-gps-badge">
-                    <CheckCircle2 size={13} className="text-emerald-600" />
+                    <CheckCircle2 size={13} className="text-cyan-400" />
                     <span>{gpsStatus}</span>
                   </div>
                 )}
@@ -653,14 +623,11 @@ export default function Register({ language = 'en' }) {
                   <div className="reg-field-group">
                     <span className="reg-input-caption"><Calendar size={13} /> {t.age}</span>
                     <input
-                      type="number"
+                      type="date"
                       className="reg-input"
-                      min="18"
-                      max="120"
-                      placeholder={t.agePlaceholder}
-                      value={form.age}
-                      onChange={(e) => setForm({ ...form, age: e.target.value })}
-                      required
+                      max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().slice(0, 10)}
+                      value={form.dateOfBirth}
+                      onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
                     />
                   </div>
                 </div>
@@ -676,7 +643,7 @@ export default function Register({ language = 'en' }) {
                         autoComplete="tel"
                         placeholder={t.phonePlaceholder}
                         value={form.phone}
-                        onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                        onChange={(e) => { setForm({ ...form, phone: e.target.value }); }}
                         required
                       />
                     </div>
@@ -690,7 +657,7 @@ export default function Register({ language = 'en' }) {
                       autoComplete="email"
                       placeholder={t.emailPlaceholder}
                       value={form.email}
-                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      onChange={(e) => { setForm({ ...form, email: e.target.value }); }}
                       required
                     />
                   </div>
@@ -788,7 +755,7 @@ export default function Register({ language = 'en' }) {
 
               {/* EMERGENCY & SAFETY */}
               <div className="reg-block">
-                <span className="reg-block-label">Safety & Verification</span>
+                <span className="reg-block-label">Account & Security</span>
 
                 <div className="reg-field-group">
                   <span className="reg-input-caption"><HeartHandshake size={13} /> {t.emergencyLabel}</span>
@@ -799,8 +766,12 @@ export default function Register({ language = 'en' }) {
                     value={form.emergencyContact}
                     onChange={(e) => setForm({ ...form, emergencyContact: e.target.value })}
                     maxLength="20"
+                    required={form.role === 'runner'}
                   />
                 </div>
+
+                <Turnstile onToken={setTurnstileToken} />
+                <div className="reg-pledge-check"><label className="reg-checkbox-label"><input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} /><span>I agree to the <Link to="/terms" target="_blank">Terms</Link> and <Link to="/privacy" target="_blank">Privacy Policy</Link>. (optional)</span></label></div>
 
                 <div className="reg-pledge-check">
                   <label className="reg-checkbox-label">
@@ -808,9 +779,8 @@ export default function Register({ language = 'en' }) {
                       type="checkbox"
                       checked={form.safetyPledge}
                       onChange={(e) => setForm({ ...form, safetyPledge: e.target.checked })}
-                      required
                     />
-                    <span>{t.safetyPledge}</span>
+                    <span>{t.safetyPledge} (optional)</span>
                   </label>
                 </div>
               </div>
@@ -854,7 +824,7 @@ export default function Register({ language = 'en' }) {
         </p>
 
         <div className="reg-trust-footer">
-          <ShieldCheck size={13} className="text-emerald-600" />
+          <ShieldCheck size={13} className="text-cyan-400" />
           <span>{t.trustNote}</span>
         </div>
       </div>

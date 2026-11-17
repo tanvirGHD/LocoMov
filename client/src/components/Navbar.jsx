@@ -25,7 +25,7 @@ const translations = {
   },
 };
 
-export default function Navbar({ language = 'en', setLanguage }) {
+export default function Navbar({ language = 'en', setLanguage, hideProfile = false }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,6 +34,7 @@ export default function Navbar({ language = 'en', setLanguage }) {
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const t = translations[language] || translations.en;
   const showLandingLinks = location.pathname === '/';
+  const isAdminDashboard = location.pathname === '/dashboard' && user && ['admin', 'super_admin', 'sub_admin'].includes(user.role);
 
   const fetchNotifications = async () => {
     if (!user) return;
@@ -95,7 +96,9 @@ export default function Navbar({ language = 'en', setLanguage }) {
   }
 
   function toggleLanguage() {
-    setLanguage((current) => (current === 'en' ? 'bn' : 'en'));
+    const next = language === 'en' ? 'bn' : 'en';
+    setLanguage?.(next);
+    localStorage.setItem('locomuv-language', next);
   }
 
   return (
@@ -112,31 +115,41 @@ export default function Navbar({ language = 'en', setLanguage }) {
             <a href="#errands">{language === 'bn' ? 'সাম্প্রতিক কাজ' : 'Recent errands'}</a>
             <a href="#faq">FAQ</a>
           </div>}
-          <button type="button" className="language-switch" onClick={toggleLanguage} aria-label="Toggle language">
-            <Globe2 size={15} />
-            <span>{language === 'en' ? 'EN / বাংলা' : 'বাংলা / EN'}</span>
-          </button>
+          {!isAdminDashboard && (
+            <button type="button" className="language-switch" onClick={toggleLanguage} aria-label="Toggle language">
+              <Globe2 size={15} />
+              <span>{language === 'en' ? 'EN / বাংলা' : 'বাংলা / EN'}</span>
+            </button>
+          )}
+          {!isAdminDashboard && (
+            <button type="button" className="language-switch" onClick={toggleLanguage} aria-label="Toggle language">
+              <Globe2 size={15} />
+              <span>{language === 'en' ? 'EN / বাংলা' : 'বাংলা / EN'}</span>
+            </button>
+          )}
           {user ? (
             <>
-              <div className="notification-wrap">
-                <button type="button" className="notification-bell" onClick={() => setShowNotifications((current) => !current)} aria-label="Notifications">
-                  <Bell size={16} />
-                  {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
-                </button>
-                {showNotifications && <div className="notification-dropdown">
+              {!isAdminDashboard && (
+                <Link to="/dashboard" className="nav-dashboard" aria-label={t.dashboard} title={t.dashboard}>
+                  <LayoutDashboard size={15} /> <span>{t.dashboard}</span>
+                </Link>
+              )}
+              <button type="button" className="notification-bell" onClick={() => setShowNotifications((current) => !current)} aria-label="Notifications" title="Notifications">
+                <Bell size={16} />
+                {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
+              </button>
+              {showNotifications && (
+                <div className="notification-dropdown">
                   <div className="notification-header">
                     <strong>Notifications</strong>
-                    {unreadCount > 0 && <button type="button" className="text-button" onClick={handleMarkAllRead}>Mark all read</button>}
+                    <button type="button" className="mark-all-read" onClick={handleMarkAllRead}>{language === 'bn' ? 'সব পড়া?' : 'Mark all read'}</button>
                   </div>
                   {notifications.length === 0 ? <div className="notification-empty">No notifications yet.</div> : (
                     <>
                       {visibleNotifications.map((item) => (
-                        <div key={item._id} className={`notification-item ${item.readAt ? '' : 'unread'}`}>
-                          <div>
-                            <strong>{item.title}</strong>
-                            <p>{item.message}</p>
-                          </div>
-                          {!item.readAt && <button type="button" className="text-button" onClick={() => handleMarkRead(item._id)}>Mark read</button>}
+                        <div key={item._id} className={`notification-item ${item.readAt ? '' : 'unread'}`} onClick={() => handleMarkRead(item._id)}>
+                          <strong>{item.title || item.message || 'Notification'}</strong>
+                          <p className="notification-time">{new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                         </div>
                       ))}
                       {notifications.length > 3 && (
@@ -146,53 +159,8 @@ export default function Navbar({ language = 'en', setLanguage }) {
                       )}
                     </>
                   )}
-                </div>}
-              </div>
-              <Link to="/dashboard" className="nav-dashboard" aria-label={t.dashboard} title={t.dashboard}><LayoutDashboard size={15} /> <span>{t.dashboard}</span></Link>
-
-              <div className="nav-user-corner" title={`${user.name} · ${user.area || 'Neighborhood'}`}>
-                <div className="nav-avatar-ring">
-                  {user.avatarUrl ? (
-                    <img
-                      src={user.avatarUrl}
-                      alt={user.name}
-                      className="nav-avatar-img"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        const fallback = e.currentTarget.parentElement?.querySelector('.nav-avatar-fallback');
-                        if (fallback) fallback.style.display = 'flex';
-                      }}
-                    />
-                  ) : null}
-                  <div
-                    className="nav-avatar-fallback"
-                    style={{ display: user.avatarUrl ? 'none' : 'flex' }}
-                  >
-                    {user.name?.charAt(0).toUpperCase() || 'U'}
-                  </div>
-                  <span className="nav-online-dot" title="Active" />
                 </div>
-
-                <div className="nav-user-text">
-                  <span className="nav-user-name">{user.name}</span>
-                  {user.role === 'admin' ? (
-                    <span className="nav-admin-prominent-badge">
-                      <ShieldCheck size={11} /> ADMIN
-                    </span>
-                  ) : (
-                    <span className={`nav-user-role-badge role-${user.role}`}>
-                      {user.role === 'runner'
-                        ? (user.verificationStatus === 'pending' ? 'Runner (Pending)' : 'Verified Runner')
-                        : 'Customer'}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <button className="nav-logout" onClick={handleLogout} type="button" aria-label={t.logout} title={t.logout}>
-                <ArrowRightFromLine size={15} />
-                <span>{t.logout}</span>
-              </button>
+              )}
             </>
           ) : (
             <>

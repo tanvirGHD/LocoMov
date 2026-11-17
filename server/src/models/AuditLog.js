@@ -19,12 +19,12 @@ const auditLogSchema = new Schema({
   targetType: {
     type: String,
     required: true,
-    enum: ['task', 'user', 'review', 'message', 'conversation', 'report'],
+    enum: ['task', 'user', 'review', 'message', 'conversation', 'report', 'admin'],
     index: true,
   },
   targetId: {
     type: Schema.Types.ObjectId,
-    required: true,
+    required: function targetRequired() { return this.targetType !== 'admin'; },
     index: true,
   },
   metadata: {

@@ -1,15 +1,16 @@
 // Run: node clearStaleOtps.mjs  (from the server/ directory)
+import 'dotenv/config';
 import { createDecipheriv, createHash } from 'crypto';
 import mongoose from 'mongoose';
-import dns from 'node:dns';
 
-dns.setServers(['8.8.8.8', '1.1.1.1']);
+const { MONGO_URI, OTP_SECRET, JWT_SECRET } = process.env;
+const encryptionSecret = OTP_SECRET || JWT_SECRET;
 
-const MONGO_URI = 'mongodb+srv://LocoMuv:jH0zLa5XSZ6efIEE@cluster0.y15rh.mongodb.net/LocoMuv?retryWrites=true&w=majority';
-const OTP_SECRET = 'locomuv-otp-secret-change-me';
+if (!MONGO_URI) throw new Error('MONGO_URI is missing from server/.env.');
+if (!encryptionSecret) throw new Error('OTP_SECRET or JWT_SECRET is missing from server/.env.');
 
 function currentKey() {
-  return createHash('sha256').update('ParaSync OTP encryption key v1:').update(OTP_SECRET).digest();
+  return createHash('sha256').update('ParaSync OTP encryption key v1:').update(encryptionSecret).digest();
 }
 
 function canDecrypt(encrypted) {
@@ -61,5 +62,9 @@ async function run() {
   await mongoose.disconnect();
 }
 
-run().catch((err) => { console.error('Error:', err.message); process.exit(1); });
+run().catch((err) => {
+  const reason = err?.code || err?.name || 'UnknownError';
+  console.error(`Could not process stale OTPs (${reason}). Check Atlas DNS/network access and database permissions.`);
+  process.exit(1);
+});
 

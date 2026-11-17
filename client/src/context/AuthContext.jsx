@@ -20,15 +20,28 @@ export function AuthProvider({ children }) {
     setUser(currentUser);
     return currentUser;
   }, []);
-  const login = async (body) => setUser(await api.login(body));
-  const register = async (body) => setUser(await api.register(body));
+  const login = async (body) => {
+    const result = await api.login(body);
+    if (result.authenticated) setUser(result.user);
+    return result;
+  };
+  const verifyLogin = async (body) => {
+    const result = await api.verifyLogin(body);
+    setUser(result.user);
+    return result;
+  };
+  const register = async (body) => {
+    const result = await api.register(body);
+    if (result.authenticated) setUser(result.user);
+    return result;
+  };
   const logout = async () => {
     await api.logout();
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, verifyLogin, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

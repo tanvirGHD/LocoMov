@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -8,16 +8,20 @@ import {
   Check,
   ChevronDown,
   Clock3,
+  MapPin,
   MapPinned,
   Package,
   Pill,
   RefreshCw,
+  Rocket,
   ShieldCheck,
   ShoppingCart,
   Sparkles,
+  Users,
   Zap,
 } from 'lucide-react';
 import { api } from '../api';
+import PageMeta from '../components/PageMeta';
 
 const content = {
   en: {
@@ -39,16 +43,18 @@ const content = {
     assigned: 'Assigned',
     noTasks: 'No open errands right now',
     noTasksText: 'New customer posts will appear here as soon as they are published.',
+    taskTypes: { medicine: 'Medicine run', groceries: 'Grocery run', books: 'Book pickup', delivery: 'Local delivery', errand: 'Neighborhood errand' },
     updated: 'Refreshes automatically',
     refreshedAt: 'Last updated',
     refreshNow: 'Refresh tasks now',
     seeAll: 'Sign in as a runner to respond',
-    postedBy: 'Posted by',
-    postedAt: 'Posted',
+    postedBy: 'Budget',
+    postedAt: 'ago',
     respondToTask: 'Sign in to accept or make an offer',
     justNow: 'Just now',
     minutesAgo: (count) => `${count} min ago`,
     hoursAgo: (count) => `${count} hr ago`,
+    daysAgo: (count) => `${count} day ago`,
     sectionEyebrow: 'Built for real neighborhood life',
     sectionTitle: 'How it works',
     sectionText: 'Find work, find people, and move safely without friction.',
@@ -69,7 +75,7 @@ const content = {
       { icon: ShieldCheck, title: 'Receive it safely', text: 'Track the delivery and confirm handoff with the secure OTP.', note: 'OTP-confirmed handoff' },
     ],
     runnerSteps: [
-      { icon: BadgeCheck, title: 'Get verified', text: 'Create a runner account and submit the required identity information.', note: 'Build trust with your profile' },
+      { icon: BadgeCheck, title: 'Get started as a runner', text: 'Create a runner account and complete the required profile details.', note: 'Build trust with your profile' },
       { icon: MapPinned, title: 'Find nearby tasks', text: 'Browse local requests and accept the jobs that fit your route.', note: 'You choose when to work' },
       { icon: Bike, title: 'Deliver and earn', text: 'Complete the task with OTP confirmation and receive the agreed payment.', note: 'Clear price before accepting' },
     ],
@@ -79,15 +85,14 @@ const content = {
       { icon: Sparkles, title: 'Safer handoffs', text: 'Photo proof helps make pickups, deliveries, and disputes clearer.' },
     ],
     faq: [
-      { q: 'Does LocoMuv require a full registration process?', a: 'No! You can post an errand immediately with just your mobile phone number and OTP login. Full registration is only required if you apply to become an active earning runner.' },
+      { q: 'Can I post with only my mobile number and an OTP?', a: 'No. You need to complete the account registration form and sign in before posting a task. OTPs are used to confirm pickup and delivery, not to create an account.' },
       { q: 'Can runners accept tasks near my neighborhood?', a: 'Yes. Nearby tasks appear in the runner dashboard based on location and task limits.' },
       { q: 'What if a job is delayed or disputed?', a: 'Tasks can be reported, and admins can review the issue and take action.' },
       { q: 'How are delivery fees calculated in BDT (৳)?', a: 'Customers set a budget when posting. Runners can accept it or send an offer, and the final price is shown before the customer accepts.' },
     ],
     labels: {
-      localValue: 'Dhaka', localLabel: 'Built for local neighborhoods',
-      safetyValue: '4-digit OTP', safetyLabel: 'Verified pickup and delivery',
-      liveValue: '12 sec', liveLabel: 'Live task refresh',
+      completedLabel: 'Completed deliveries',
+      activeRunnersLabel: 'Active runner accounts',
     },
   },
   bn: {
@@ -109,6 +114,7 @@ const content = {
     assigned: 'রানার পেয়েছে',
     noTasks: 'এই মুহূর্তে কোনো খোলা কাজ নেই',
     noTasksText: 'গ্রাহক নতুন কাজ পোস্ট করলেই এখানে দেখা যাবে।',
+    taskTypes: { medicine: 'ওষুধ আনা', groceries: 'বাজার করা', books: 'বই আনা', delivery: 'স্থানীয় ডেলিভারি', errand: 'এলাকার কাজ' },
     updated: 'স্বয়ংক্রিয়ভাবে আপডেট হয়',
     refreshedAt: 'সর্বশেষ আপডেট',
     refreshNow: 'কাজের তালিকা আপডেট করুন',
@@ -119,6 +125,7 @@ const content = {
     justNow: 'এইমাত্র',
     minutesAgo: (count) => `${count} মিনিট আগে`,
     hoursAgo: (count) => `${count} ঘণ্টা আগে`,
+    daysAgo: (count) => `${count} দিন আগে`,
     sectionEyebrow: 'আপনার এলাকার জন্য তৈরি',
     sectionTitle: 'যেভাবে কাজ করে',
     sectionText: 'সহজে কাজ খুঁজুন, মানুষের সঙ্গে যুক্ত হোন, নিরাপদে ডেলিভারি দিন।',
@@ -138,7 +145,7 @@ const content = {
       { icon: ShieldCheck, title: 'নিরাপদে ডেলিভারি', text: 'OTP যাচাই ও প্রমাণের মাধ্যমে হস্তান্তর নিরাপদ থাকে।', note: 'OTP-তে নিশ্চিত হস্তান্তর' },
     ],
     runnerSteps: [
-      { icon: BadgeCheck, title: 'যাচাইকৃত রানার হোন', text: 'রানার অ্যাকাউন্ট তৈরি করে প্রয়োজনীয় পরিচয়পত্র জমা দিন।', note: 'প্রোফাইলে আস্থা তৈরি করুন' },
+      { icon: BadgeCheck, title: 'রানার হিসেবে শুরু করুন', text: 'রানার অ্যাকাউন্ট তৈরি করে প্রোফাইলের প্রয়োজনীয় তথ্য পূরণ করুন।', note: 'প্রোফাইলে আস্থা তৈরি করুন' },
       { icon: MapPinned, title: 'কাছের কাজ খুঁজুন', text: 'নিজের এলাকার কাজ দেখুন এবং সুবিধামতো কাজ গ্রহণ করুন।', note: 'নিজের সময়ে কাজ করুন' },
       { icon: Bike, title: 'ডেলিভারি দিয়ে আয় করুন', text: 'OTP দিয়ে কাজ সম্পন্ন করুন এবং সম্মত পারিশ্রমিক পান।', note: 'গ্রহণের আগেই দাম দেখুন' },
     ],
@@ -154,34 +161,24 @@ const content = {
       { q: 'ডেলিভারি ফি কীভাবে ঠিক হয়?', a: 'গ্রাহক কাজ পোস্ট করার সময় বাজেট দেন। রানার সেই বাজেট গ্রহণ করতে বা অফার পাঠাতে পারেন; গ্রাহক গ্রহণের আগে চূড়ান্ত দাম দেখা যায়।' },
     ],
     labels: {
-      localValue: 'ঢাকা', localLabel: 'স্থানীয় এলাকার জন্য তৈরি',
-      safetyValue: '৪-ডিজিট OTP', safetyLabel: 'যাচাইকৃত পিকআপ ও ডেলিভারি',
-      liveValue: '১২ সেকেন্ড', liveLabel: 'লাইভ কাজের আপডেট',
+      completedLabel: 'সম্পন্ন ডেলিভারি',
+      activeRunnersLabel: 'সক্রিয় রানার অ্যাকাউন্ট',
     },
   },
 };
 
-function getTaskIcon(title = '') {
-  const value = title.toLowerCase();
-  if (/medicine|pharma|ওষুধ|ফার্মেসি/.test(value)) return Pill;
-  if (/book|campus|বই|ক্যাম্পাস/.test(value)) return BookOpen;
-  if (/water|snack|grocery|market|পানি|নাস্তা|বাজার/.test(value)) return ShoppingCart;
+function getTaskIcon(type = '') {
+  if (type === 'medicine') return Pill;
+  if (type === 'books') return BookOpen;
+  if (type === 'groceries') return ShoppingCart;
+  if (type === 'delivery') return Bike;
   return Package;
-}
-
-function formatPrice(price, language) {
-  const locale = language === 'bn' ? 'bn-BD' : 'en-US';
-  return `৳ ${Number(price || 0).toLocaleString(locale)}`;
-}
-
-function formatTaskDate(date, language) {
-  const locale = language === 'bn' ? 'bn-BD' : 'en-US';
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(date));
 }
 
 export default function Landing({ language = 'en', user = null }) {
   const t = content[language] || content.en;
   const [tasks, setTasks] = useState([]);
+  const [stats, setStats] = useState({ completedDeliveries: null, activeRunners: null });
   const [tasksLoading, setTasksLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
@@ -197,10 +194,17 @@ export default function Landing({ language = 'en', user = null }) {
         const response = await api.publicTasks();
         if (!ignore) {
           setTasks(Array.isArray(response.tasks) ? response.tasks : []);
+          setStats({
+            completedDeliveries: Number.isFinite(response.stats?.completedDeliveries) ? response.stats.completedDeliveries : null,
+            activeRunners: Number.isFinite(response.stats?.activeRunners) ? response.stats.activeRunners : null,
+          });
           setLastUpdated(new Date());
         }
       } catch (_) {
-        if (!ignore) setTasks([]);
+        if (!ignore) {
+          setTasks([]);
+          setStats({ completedDeliveries: null, activeRunners: null });
+        }
       } finally {
         if (!ignore) {
           setTasksLoading(false);
@@ -218,44 +222,181 @@ export default function Landing({ language = 'en', user = null }) {
   }, [refreshVersion]);
 
   return (
-    <div className={`landing-page ${language === 'bn' ? 'landing-page-bn' : ''}`}>
-      <section className="landing-hero page-width">
-        <div className="hero-copy">
-          <div className="eyebrow"><span className="eyebrow-dot" />{t.eyebrow}</div>
-          <h1>{t.headline}<span>{t.highlight}</span></h1>
-          <p>{t.subtext}</p>
-
-          <div className="hero-actions">
-            <Link to="/register" className="button button-primary button-large">{t.start}<ArrowRight size={16} /></Link>
-            <Link to="/login" className="button button-quiet button-large">{t.login}<ArrowRight size={16} /></Link>
-          </div>
-
-          <div className="hero-trust">
-            <span className="trust-mark"><Check size={14} strokeWidth={3} /></span>
-            <span>{t.trustPill}</span>
-          </div>
+    <div className={`landing-page landing-hero-redesign ${language === 'bn' ? 'landing-page-bn' : ''}`}>
+      <PageMeta
+        title={language === 'bn' ? 'LocoMuv — ঢাকার স্থানীয় কাজ ও ডেলিভারি' : 'LocoMuv — Neighborhood Errands in Dhaka'}
+        description={language === 'bn' ? 'ঢাকার গ্রাহক ও স্থানীয় রানারদের নিরাপদে যুক্ত করে ছোট কাজ ও ডেলিভারি সম্পন্ন করুন।' : 'Connect with trusted neighborhood runners in Dhaka for everyday errands and deliveries.'}
+        lang={language === 'bn' ? 'bn' : 'en'}
+      />
+      <section className="landing-hero landing-hero-v2" aria-label="Hero">
+        <div className="hero-v2-bg" aria-hidden="true">
+          <div className="hero-v2-bg-base" />
+          <div className="hero-v2-bg-dots" />
+          <div className="hero-v2-bg-curve hero-v2-bg-curve-1" />
+          <div className="hero-v2-bg-curve hero-v2-bg-curve-2" />
+          <svg className="hero-v2-city-svg" viewBox="0 0 1440 520" preserveAspectRatio="xMidYMax slice" focusable="false">
+            <defs>
+              <linearGradient id="heroSky" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#00152D" />
+                <stop offset="55%" stopColor="#002447" />
+                <stop offset="100%" stopColor="#001B35" />
+              </linearGradient>
+              <linearGradient id="heroGlow" x1="0" y1="1" x2="1" y2="0">
+                <stop offset="0%" stopColor="#00D9FF" stopOpacity="0" />
+                <stop offset="45%" stopColor="#159BFF" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="#00D9FF" stopOpacity="0.05" />
+              </linearGradient>
+              <linearGradient id="roadGlow" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#001B35" stopOpacity="0" />
+                <stop offset="35%" stopColor="#00D9FF" stopOpacity="0.18" />
+                <stop offset="100%" stopColor="#159BFF" stopOpacity="0.02" />
+              </linearGradient>
+            </defs>
+            <g className="hero-city-buildings" fill="#021F38" opacity="0.95">
+              <rect x="620" y="300" width="48" height="220" rx="4" />
+              <rect x="676" y="250" width="64" height="270" rx="4" />
+              <rect x="748" y="280" width="42" height="240" rx="4" />
+              <rect x="798" y="210" width="70" height="310" rx="4" />
+              <rect x="876" y="265" width="52" height="255" rx="4" />
+              <rect x="936" y="230" width="58" height="290" rx="4" />
+              <rect x="1002" y="285" width="46" height="235" rx="4" />
+              <rect x="1056" y="245" width="66" height="275" rx="4" />
+              <rect x="1130" y="270" width="54" height="250" rx="4" />
+              <rect x="1192" y="220" width="72" height="300" rx="4" />
+              <rect x="1272" y="290" width="60" height="230" rx="4" />
+              <rect x="1340" y="260" width="80" height="260" rx="4" />
+            </g>
+            <g className="hero-city-windows" fill="#00D9FF" opacity="0.35">
+              <rect x="700" y="270" width="6" height="10" rx="1" />
+              <rect x="810" y="270" width="6" height="10" rx="1" />
+              <rect x="920" y="270" width="6" height="10" rx="1" />
+              <rect x="1030" y="270" width="6" height="10" rx="1" />
+              <rect x="1140" y="270" width="6" height="10" rx="1" />
+              <rect x="1250" y="270" width="6" height="10" rx="1" />
+              <rect x="700" y="308" width="6" height="10" rx="1" />
+              <rect x="810" y="308" width="6" height="10" rx="1" />
+              <rect x="920" y="308" width="6" height="10" rx="1" />
+              <rect x="1030" y="308" width="6" height="10" rx="1" />
+              <rect x="1140" y="308" width="6" height="10" rx="1" />
+              <rect x="1250" y="308" width="6" height="10" rx="1" />
+              <rect x="640" y="320" width="5" height="9" rx="1" />
+              <rect x="735" y="320" width="5" height="9" rx="1" />
+              <rect x="830" y="320" width="5" height="9" rx="1" />
+              <rect x="925" y="320" width="5" height="9" rx="1" />
+              <rect x="1020" y="320" width="5" height="9" rx="1" />
+              <rect x="1115" y="320" width="5" height="9" rx="1" />
+              <rect x="1210" y="320" width="5" height="9" rx="1" />
+              <rect x="1305" y="320" width="5" height="9" rx="1" />
+            </g>
+            <g className="hero-city-trees" fill="#013A2A" opacity="0.9">
+              <ellipse cx="590" cy="410" rx="55" ry="35" />
+              <ellipse cx="650" cy="420" rx="40" ry="28" />
+              <ellipse cx="1225" cy="430" rx="50" ry="30" />
+              <ellipse cx="1295" cy="418" rx="60" ry="34" />
+            </g>
+            <g className="hero-memorial" transform="translate(1085,235)" opacity="0.95">
+              <polygon points="0,180 22,40 44,180" fill="#052B40" />
+              <polygon points="14,180 36,20 58,180" fill="#06344D" />
+              <polygon points="28,180 50,45 72,180" fill="#052B40" />
+              <rect x="-10" y="180" width="100" height="10" rx="3" fill="#043047" />
+            </g>
+            <path d="M520 520 L860 360 L1440 360 L1440 520 Z" fill="#001B35" opacity="0.92" />
+            <path d="M560 520 L900 372 L1440 372 L1440 392 L930 392 L620 520 Z" fill="url(#roadGlow)" />
+            <path d="M760 520 L980 388 L1440 388" stroke="#00D9FF" strokeOpacity="0.18" strokeWidth="2" fill="none" />
+            <rect x="620" y="220" width="820" height="300" fill="url(#heroGlow)" opacity="0.55" />
+          </svg>
+          <div className="hero-v2-bg-overlay" />
         </div>
 
-        <div className="visual-shell">
-          <div className="hero-network-card" aria-label={t.networkTitle}>
-            <div className="hero-network-heading"><span><MapPinned size={16} />{t.networkTitle}</span><i><b />Dhaka</i></div>
-            <div className="requests-map hero-network-map" aria-hidden="true">
-              <div className="requests-map-grid" />
-              <svg viewBox="0 0 520 130" preserveAspectRatio="none"><path d="M20 96 C120 24 190 114 282 55 S420 23 500 72" /></svg>
-              <span className="map-point map-point-a"><MapPinned size={15} /></span>
-              <span className="map-point map-point-b"><Bike size={17} /></span>
-              <span className="map-area-label map-area-left">Azimpur</span>
-              <span className="map-area-label map-area-right">Dhanmondi</span>
+        <div className="landing-hero-inner page-width">
+          <div className="hero-copy hero-copy-v2">
+            <div className="hero-trust-badge">
+              <span className="hero-trust-badge-icon"><ShieldCheck size={14} /></span>
+              <span>{language === 'bn' ? 'ঢাকার পাড়ায় নির্ভরযোগ্য সেবা' : 'TRUSTED BRANDS FOR DHAKA NEIGHBORHOODS'}</span>
             </div>
-            <div className="hero-network-features">
-              <span><MapPinned size={15} />{t.networkPickup}</span>
-              <span><Bike size={15} />{t.networkDelivery}</span>
-              <span><ShieldCheck size={15} />{t.networkVerified}</span>
+            <h1 className="hero-headline-v2">
+              {language === 'bn' ? (
+                <>
+                  <span className="hero-line hero-line-white">প্রতিদিনের ব্যস্ততায়</span>
+                  <span className="hero-line hero-line-white">স্থানীয় সহায়তা।</span>
+                  <span className="hero-line hero-line-cyan">দ্রুত, নির্ভরযোগ্য,</span>
+                  <span className="hero-line hero-line-cyan hero-line-underline">আপনার কাছেই।</span>
+                </>
+              ) : (
+                <>
+                  <span className="hero-line hero-line-white">Local help for the</span>
+                  <span className="hero-line hero-line-white">everyday rush.</span>
+                  <span className="hero-line hero-line-cyan">Fast, trusted, and</span>
+                  <span className="hero-line hero-line-cyan hero-line-underline">close to home.</span>
+                </>
+              )}
+            </h1>
+            <p className="hero-subtext-v2">
+              {language === 'bn'
+                ? 'আজিমপুরে ওষুধ আনা থেকে ঢাকার নানা দৈনন্দিন কাজ—লোকোমুভ গ্রাহক ও বিশ্বস্ত পাড়ার রানারদের একসঙ্গে আনে।'
+                : 'From medicine pickups in Azimpur to everyday errands across Dhaka, LocoMuv brings customers and trusted neighborhood runners together.'}
+            </p>
+
+            <div className="hero-actions hero-actions-v2">
+              <Link to="/register" className="hero-btn hero-btn-primary">
+                <Rocket size={18} aria-hidden="true" />
+                <span>{language === 'bn' ? 'কাজ পোস্ট করুন' : 'Post a task'}</span>
+                <ArrowRight size={16} aria-hidden="true" />
+              </Link>
+              <Link to="/login" className="hero-btn hero-btn-secondary">
+                <span>{language === 'bn' ? 'সাইন ইন' : 'Sign in'}</span>
+                <ArrowRight size={16} aria-hidden="true" />
+              </Link>
+            </div>
+
+            <div className="hero-verify-v2">
+              <span className="hero-verify-check"><Check size={14} strokeWidth={3} /></span>
+              <span>{language === 'bn' ? 'OTP যাচাইকৃত পিকআপ ও ডেলিভারি' : 'OTP verified pickup and delivery'}</span>
+            </div>
+          </div>
+
+          <div className="visual-shell visual-shell-v2">
+            <div className="hero-live-map" aria-label={language === 'bn' ? 'লাইভ এরান্ড ম্যাপ' : 'Live errand map'}>
+              <div className="hero-live-map-bg" aria-hidden="true">
+                <div className="hero-map-grid-v2" />
+                <div className="hero-map-glow hero-map-glow-a" />
+                <div className="hero-map-glow hero-map-glow-b" />
+                <svg className="hero-route-svg" viewBox="0 0 520 260" preserveAspectRatio="none">
+                  <path className="hero-route-path hero-route-path-bg" d="M60 200 C140 120 220 230 300 150 S420 60 470 120" />
+                  <path className="hero-route-path" d="M60 200 C140 120 220 230 300 150 S420 60 470 120" />
+                </svg>
+                <span className="hero-map-node hero-map-node-pickup"><Package size={15} /></span>
+                <span className="hero-map-node hero-map-node-drop"><MapPin size={15} /></span>
+                <span className="hero-map-runner"><Bike size={15} /></span>
+                <span className="hero-map-ping hero-map-ping-1" />
+                <span className="hero-map-ping hero-map-ping-2" />
+                <span className="hero-map-ping hero-map-ping-3" />
+              </div>
+              <div className="hero-live-top">
+                <span className="hero-live-badge"><i />{language === 'bn' ? 'লাইভ ভিউ' : 'Live view'}</span>
+                <span className="hero-network-online"><b />{language === 'bn' ? 'অনলাইন' : 'Online'}</span>
+              </div>
+              <div className="hero-live-chip hero-live-chip-status">
+                <Bike size={14} />
+                <span>{language === 'bn' ? 'পণ্য পথে আছে' : 'Product on the way'}</span>
+              </div>
+              <div className="hero-live-chip hero-live-chip-pickup">
+                <Package size={14} />
+                <span>Azimpur · {language === 'bn' ? 'পিকআপ হয়েছে' : 'Picked up'}</span>
+              </div>
+              <div className="hero-live-chip hero-live-chip-drop">
+                <MapPin size={14} />
+                <span>Dhanmondi · {language === 'bn' ? 'ডেলিভারি চলছে' : 'Delivering'}</span>
+              </div>
+              <div className="hero-live-stats">
+                <div><strong>12</strong><span>{language === 'bn' ? 'সক্রিয় রানার' : 'Active runners'}</span></div>
+                <div><strong>4 min</strong><span>{language === 'bn' ? 'গড় ETA' : 'Avg ETA'}</span></div>
+                <div><strong>98%</strong><span>{language === 'bn' ? 'সময়মতো' : 'On-time'}</span></div>
+              </div>
             </div>
           </div>
         </div>
       </section>
-
       <section className="how-section page-width" id="how-it-works">
         <div className="section-heading">
           <div><div className="eyebrow">{t.sectionEyebrow}</div><h2>{t.sectionTitle}</h2></div>
@@ -284,28 +425,34 @@ export default function Landing({ language = 'en', user = null }) {
       </section>
 
       <section className="community-showcase page-width" id="errands" aria-labelledby="recent-requests-title">
-        <div className="matched-errands-section">
-          <div className="matched-errands-heading">
-            <div><span className="requests-kicker">{t.liveKicker}</span><h2 id="recent-requests-title">{t.liveTitle}</h2></div>
-            <span className="live-indicator"><i />{t.live}</span>
+        <div className="section-heading matched-errands-section-heading">
+          <div>
+            <span className="requests-kicker">{t.liveKicker}</span>
+            <h2 id="recent-requests-title">{t.liveTitle}</h2>
           </div>
+          <span className="live-indicator"><i />{t.live}</span>
+        </div>
+        <div className="matched-errands-section">
           <div className="matched-errands-grid" aria-live="polite">
             {tasksLoading ? (
               <div className="request-empty"><span className="request-loading-dot" />{language === 'bn' ? 'কাজ খোঁজা হচ্ছে…' : 'Loading customer errands…'}</div>
-            ) : tasks.length ? tasks.map((task) => {
-              const Icon = getTaskIcon(task.title);
-              const taskHref = user?.role === 'runner'
-                ? `/dashboard?taskId=${encodeURIComponent(task.id)}#tasks`
-                : user ? '/dashboard#tasks' : `/login?taskId=${encodeURIComponent(task.id)}`;
+            ) : tasks.length ? tasks.map((task, index) => {
+              const taskType = task.title;
+              const Icon = getTaskIcon(undefined);
+              const ageMinutes = task.minutesAgo || 0;
+              const ageText = ageMinutes < 1 ? t.justNow : ageMinutes < 60 ? t.minutesAgo(ageMinutes) : ageMinutes < 1440 ? t.hoursAgo(Math.floor(ageMinutes / 60)) : t.daysAgo(Math.floor(ageMinutes / 1440));
+              const taskHref = user ? '/dashboard#tasks' : '/login';
               return (
-                <Link className="request-row task-link" to={taskHref} key={task.id} aria-label={`${task.title}. ${t.respondToTask}`}>
+                <Link className="request-row task-link" to={taskHref} key={`${task.area}-${task.title}-${index}`} aria-label={`${taskType}, ${task.area}`}>
                   <span className="request-icon"><Icon size={19} /></span>
                   <span className="request-info">
-                    <strong title={task.title}>{task.title}</strong>
-                    <span className="request-route">{task.pickupArea} <ArrowRight size={11} /> {task.deliveryArea}</span>
-                    <span className="request-posted">{t.postedBy} {task.customerName || (language === 'bn' ? 'গ্রাহক' : 'Customer')} <i /> {t.postedAt} {formatTaskDate(task.createdAt, language)}</span>
+                    <strong>{taskType}</strong>
+                    <span className="request-route">{task.area} · ৳{Number(task.budget ?? task.estimatedPrice ?? 0).toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')} · {ageText}</span>
                   </span>
-                  <span className="request-price"><strong>{formatPrice(task.price, language)}</strong><span className="is-available">{t.available}</span></span>
+                  <span className="request-end">
+                    {!task.runnerId && <span className="request-status request-status-unassigned">{t.available}</span>}
+                    <ArrowRight size={15} aria-hidden="true" />
+                  </span>
                 </Link>
               );
             }) : (
@@ -319,9 +466,8 @@ export default function Landing({ language = 'en', user = null }) {
           </div>
         </div>
         <div className="social-proof-grid">
-          <div className="proof-card"><span className="proof-icon"><MapPinned size={18} /></span><div><strong>{t.labels.localValue}</strong><small>{t.labels.localLabel}</small></div></div>
-          <div className="proof-card"><span className="proof-icon"><ShieldCheck size={18} /></span><div><strong>{t.labels.safetyValue}</strong><small>{t.labels.safetyLabel}</small></div></div>
-          <div className="proof-card"><span className="proof-icon"><RefreshCw size={18} /></span><div><strong>{t.labels.liveValue}</strong><small>{t.labels.liveLabel}</small></div></div>
+          <div className="proof-card"><span className="proof-icon"><Package size={18} /></span><div><strong>{stats.completedDeliveries == null ? '—' : stats.completedDeliveries.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</strong><small>{t.labels.completedLabel}</small></div></div>
+          <div className="proof-card"><span className="proof-icon"><Bike size={18} /></span><div><strong>{stats.activeRunners == null ? '—' : stats.activeRunners.toLocaleString(language === 'bn' ? 'bn-BD' : 'en-US')}</strong><small>{t.labels.activeRunnersLabel}</small></div></div>
         </div>
       </section>
 

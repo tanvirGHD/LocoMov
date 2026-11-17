@@ -60,7 +60,7 @@ function parsedOrRespond(schema, body, res) {
 
 export function buildTaskListFilter(user) {
   if (!user) return {};
-  if (user.role === 'admin') return { status: { $ne: 'deleted' } };
+  if (['admin', 'super_admin', 'sub_admin'].includes(user.role)) return { status: { $ne: 'deleted' } };
   if (user.role === 'customer') {
     return {
       customerId: user._id,
@@ -139,7 +139,7 @@ export async function createTask(req, res) {
 
 export async function listTasks(req, res) {
   const filter = buildTaskListFilter(req.user);
-  if (req.user.role === 'admin') {
+  if (['admin', 'super_admin', 'sub_admin'].includes(req.user.role)) {
     const status = String(req.query.status || '').trim();
     if (status && ['pending', 'accepted', 'picked-up', 'in-transit', 'arriving', 'completed', 'cancelled', 'deleted'].includes(status)) {
       filter.status = status;
@@ -187,29 +187,42 @@ function publicTaskArea(address = '') {
   return neighborhood || 'Dhaka';
 }
 
+function publicTaskType(title = '') {
+  const value = String(title).toLowerCase();
+  if (/medicine|pharmacy|pharma/.test(value)) return 'medicine';
+  if (/grocery|groceries|market|shopping/.test(value)) return 'groceries';
+  if (/book|books|campus/.test(value)) return 'books';
+  if (/delivery|deliver|pickup|pick-up/.test(value)) return 'delivery';
+  return 'errand';
+}
+
 export async function listPublicTasks(req, res) {
-  const tasks = await Task.find({
-    status: 'pending',
-    runnerId: null,
-    disputeStatus: 'none',
-  })
-    .select('title estimatedPrice finalPrice status pickupAddress deliveryAddress createdAt customerId')
-    .populate('customerId', 'name')
-    .sort({ createdAt: -1 })
-    .limit(8)
-    .lean();
+  const [tasks, completedDeliveries, activeRunners] = await Promise.all([
+    Task.find({
+      status: 'pending',
+      runnerId: null,
+      disputeStatus: 'none',
+    })
+      .select('title pickupAddress estimatedPrice createdAt')
+      .sort({ createdAt: -1 })
+      .limit(8)
+      .lean(),
+    Task.countDocuments({ status: 'completed', runnerId: { $ne: null } }),
+    User.countDocuments({ role: 'runner', isActive: true, verificationStatus: 'approved' }),
+  ]);
 
   return res.json({
     tasks: tasks.map((task) => ({
-      id: String(task._id),
-      title: task.title,
-      pickupArea: publicTaskArea(task.pickupAddress),
-      deliveryArea: publicTaskArea(task.deliveryAddress),
-      price: task.finalPrice || task.estimatedPrice,
-      status: task.status,
-      customerName: task.customerId?.name?.trim().split(/\s+/)[0] || null,
-      createdAt: task.createdAt,
+      title: String(task.title || '')
+        .replace(/\b(?:\+?\d[\d\s().-]{7,}\d)\b/g, '')
+        .replace(/\b(?:house|h\.?|road|rd\.?|flat|apartment|apt\.?|sector|block|plot|lane)\s*[#:]?\s*[\w/-]+/gi, '')
+        .replace(/-?\s*\d{1,3}\.\d{4,}\s*,\s*\d{1,3}\.\d{4,}/g, '')
+        .replace(/\s{2,}/g, ' ').trim().slice(0, 120),
+      area: publicTaskArea(task.pickupAddress),
+      budget: task.estimatedPrice,
+      minutesAgo: Math.max(0, Math.floor((Date.now() - new Date(task.createdAt).getTime()) / 60000)),
     })),
+    stats: { completedDeliveries, activeRunners },
   });
 }
 
@@ -246,7 +259,7 @@ export async function getTask(req, res) {
   if (!task) return res.status(404).json({ message: 'Task not found.' });
   const isCustomer = String(task.customerId) === String(req.user._id);
   const isRunner = String(task.runnerId) === String(req.user._id);
-  if (!isCustomer && !isRunner && req.user.role !== 'admin') {
+  if (!isCustomer && !isRunner && !['admin', 'super_admin', 'sub_admin'].includes(req.user.role)) {
     return res.status(403).json({ message: 'You are not allowed to view this task.' });
   }
   const detailed = isCustomer
@@ -260,7 +273,7 @@ export async function deleteTask(req, res) {
   if (!task) return res.status(404).json({ message: 'Task not found.' });
 
   const isCustomer = String(task.customerId) === String(req.user._id);
-  if (!isCustomer && req.user.role !== 'admin') {
+  if (!isCustomer && !['admin', 'super_admin', 'sub_admin'].includes(req.user.role)) {
     return res.status(403).json({ message: 'You are not allowed to delete this task.' });
   }
 
@@ -405,7 +418,7 @@ export async function listBids(req, res) {
   const isOwner = String(task.customerId) === String(req.user._id);
   const isAssignedRunner = String(task.runnerId) === String(req.user._id);
   const hasSubmittedBid = await Bid.exists({ taskId: task._id, runnerId: req.user._id });
-  if (!isOwner && !isAssignedRunner && !hasSubmittedBid && req.user.role !== 'admin') {
+  if (!isOwner && !isAssignedRunner && !hasSubmittedBid && !['admin', 'super_admin', 'sub_admin'].includes(req.user.role)) {
     return res.status(403).json({ message: 'You are not allowed to view bids for this task.' });
   }
   const filter = isOwner
@@ -550,7 +563,7 @@ export async function cancelTask(req, res) {
 
   const isCustomer = String(task.customerId) === String(req.user._id);
   const isAssignedRunner = String(task.runnerId) === String(req.user._id);
-  if (!isCustomer && !isAssignedRunner && req.user.role !== 'admin') {
+  if (!isCustomer && !isAssignedRunner && !['admin', 'super_admin', 'sub_admin'].includes(req.user.role)) {
     return res.status(403).json({ message: 'You are not allowed to cancel this task.' });
   }
 
@@ -583,7 +596,7 @@ export async function cancelTask(req, res) {
   );
   if (!updated) return res.status(409).json({ message: 'The task was changed before this action completed.' });
 
-  if (req.user.role === 'admin') {
+  if (['admin', 'super_admin', 'sub_admin'].includes(req.user.role)) {
     const { default: AuditLog } = await import('../models/AuditLog.js');
     await AuditLog.create({
       actor: req.user._id,
@@ -737,7 +750,8 @@ export async function resolveDispute(req, res) {
 }
 
 export async function dashboard(req, res) {
-  const taskFilter = req.user.role === 'admin'
+  const canViewAllTasks = req.user.role === 'admin' || req.user.role === 'super_admin' || (req.user.role === 'sub_admin' && req.user.permissions?.includes('tasks'));
+  const taskFilter = canViewAllTasks
     ? { status: { $ne: 'deleted' } }
     : req.user.role === 'customer'
       ? { customerId: req.user._id, status: { $ne: 'deleted' }, hiddenForCustomer: { $ne: true } }
@@ -756,7 +770,7 @@ export async function dashboard(req, res) {
     { $sort: { _id: 1 } },
   ]);
   let visitorStats = null;
-  if (req.user.role === 'admin') {
+  if (req.user.role === 'admin' || req.user.role === 'super_admin' || (req.user.role === 'sub_admin' && req.user.permissions?.includes('reports'))) {
     visitorStats = await getVisitorAnalytics();
   }
 

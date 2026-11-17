@@ -14,6 +14,7 @@ export async function requireAuth(req, res, next) {
     const user = await User.findById(payload.id);
     if (!user) return res.status(401).json({ message: 'User not found. Please log in again.' });
     if (!user.isActive) return res.status(403).json({ message: 'This account has been deactivated by an admin.' });
+    if (Number(payload.version || 0) !== Number(user.sessionVersion || 0)) return res.status(401).json({ message: 'Session expired. Please log in again.' });
     req.user = user;
     req.userId = user._id;
     return next();
@@ -27,9 +28,17 @@ export async function requireAuth(req, res, next) {
 
 export function requireRole(...roles) {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    const role = req.user?.role === 'admin' ? 'super_admin' : req.user?.role;
+    if (!req.user || !roles.includes(role) && !(roles.includes('admin') && ['super_admin', 'sub_admin'].includes(role))) {
       return res.status(403).json({ message: 'You do not have permission to do that.' });
     }
     return next();
   };
+}
+
+export function requireApprovedRunner(req, res, next) {
+  if (req.user?.role !== 'runner' || req.user.verificationStatus !== 'approved') {
+    return res.status(403).json({ message: 'Runner approval is required before accepting tasks.' });
+  }
+  return next();
 }

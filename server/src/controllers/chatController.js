@@ -83,7 +83,7 @@ export async function createNotification({ userId, kind = 'system', title, messa
 }
 
 function getJobAccess(task, userId, role) {
-  if (role === 'admin') return true;
+  if (['admin', 'super_admin', 'sub_admin'].includes(role)) return true;
   if (!task) return false;
   const customer = String(task.customerId) === String(userId);
   const runner = String(task.runnerId) === String(userId);
@@ -197,7 +197,7 @@ export async function getConversationMessages(req, res) {
   const hasOpenIssue = conversation.job?.disputeStatus === 'open';
   const hasReport = await Report.exists({ conversation: conversation._id });
 
-  if (req.user.role === 'admin' && (hasOpenIssue || hasReport)) {
+  if (['admin', 'super_admin', 'sub_admin'].includes(req.user.role) && (hasOpenIssue || hasReport)) {
     await ConversationAuditLog.create({
       conversation: conversation._id,
       task: conversation.job?._id || null,
@@ -208,8 +208,8 @@ export async function getConversationMessages(req, res) {
   }
 
   const hasAccess = getJobAccess(conversation.job, req.user._id, req.user.role);
-  if (!hasAccess && req.user.role !== 'admin') return res.status(403).json({ message: 'You are not allowed to access this conversation.' });
-  if (req.user.role !== 'admin' && (hasOpenIssue || hasReport)) {
+  if (!hasAccess && !['admin', 'super_admin', 'sub_admin'].includes(req.user.role)) return res.status(403).json({ message: 'You are not allowed to access this conversation.' });
+  if (!['admin', 'super_admin', 'sub_admin'].includes(req.user.role) && (hasOpenIssue || hasReport)) {
     return res.status(403).json({ message: 'This conversation is under admin review.' });
   }
 
@@ -362,7 +362,7 @@ export async function sendConversationMessage(req, res) {
   }
 
   if (safety.flagged) {
-    const adminUsers = await User.find({ role: 'admin' }).lean();
+    const adminUsers = await User.find({ role: { $in: ['admin', 'super_admin'] } }).lean();
     for (const admin of adminUsers) {
       await createNotification({
         userId: admin._id,
@@ -399,7 +399,7 @@ export async function deleteConversationMessage(req, res) {
   if (!message) return res.status(404).json({ message: 'Message not found.' });
   const conversation = await Conversation.findById(message.conversation);
   if (!conversation) return res.status(404).json({ message: 'Conversation not found.' });
-  if (String(message.sender) !== String(req.user._id) && req.user.role !== 'admin') {
+  if (String(message.sender) !== String(req.user._id) && !['admin', 'super_admin', 'sub_admin'].includes(req.user.role)) {
     return res.status(403).json({ message: 'You can only delete your own messages.' });
   }
   await Message.deleteOne({ _id: message._id });
@@ -438,7 +438,7 @@ export async function reportConversation(req, res) {
   if (!conversation) return res.status(404).json({ message: 'Conversation not found.' });
 
   const hasAccess = conversation.participants.some((participant) => String(participant) === String(req.user._id));
-  if (!hasAccess && req.user.role !== 'admin') return res.status(403).json({ message: 'You cannot report this conversation.' });
+  if (!hasAccess && !['admin', 'super_admin', 'sub_admin'].includes(req.user.role)) return res.status(403).json({ message: 'You cannot report this conversation.' });
 
   const report = await Report.create({
     conversation: conversation._id,
@@ -446,7 +446,7 @@ export async function reportConversation(req, res) {
     reason: escapeHtml(parsed.data.reason),
   });
 
-  const adminUsers = await User.find({ role: 'admin' }).lean();
+    const adminUsers = await User.find({ role: { $in: ['admin', 'super_admin'] } }).lean();
   for (const admin of adminUsers) {
     await createNotification({
       userId: admin._id,
@@ -533,7 +533,7 @@ export async function getConversationAuditLog(req, res) {
   const conversation = await Conversation.findById(req.params.id);
   if (!conversation) return res.status(404).json({ message: 'Conversation not found.' });
 
-  const hasAccess = req.user.role === 'admin' || conversation.participants.some((participant) => String(participant) === String(req.user._id));
+  const hasAccess = ['admin', 'super_admin', 'sub_admin'].includes(req.user.role) || conversation.participants.some((participant) => String(participant) === String(req.user._id));
   if (!hasAccess) return res.status(403).json({ message: 'You are not allowed to access this audit log.' });
 
   const logs = await ConversationAuditLog.find({ conversation: conversation._id }).sort({ createdAt: -1 }).populate('viewer', 'name role').lean();

@@ -12,7 +12,7 @@ A neighborhood-based micro-delivery and local task network for Bangladesh. Custo
 ## Requirements
 
 - Node.js 18 or later
-- A local MongoDB server or MongoDB Atlas
+- A MongoDB Atlas cluster
 
 ## Setup
 
@@ -22,7 +22,7 @@ A neighborhood-based micro-delivery and local task network for Bangladesh. Custo
    npm run install:all
    ```
 
-2. Copy `server/.env.example` to `server/.env`. Set your own values for `MONGO_URI`, `JWT_SECRET`, and `OTP_SECRET`. For OTP security, keep `OTP_SECRET` separate from the JWT secret.
+2. Copy `server/.env.example` to `server/.env`. Set your Atlas `MONGO_URI`, `JWT_SECRET`, and `OTP_SECRET`. For OTP security, keep `OTP_SECRET` separate from the JWT secret. The API uses the configured persistent MongoDB and stops if it cannot connect; it never switches to local or in-memory storage.
 
 3. Start the application in two separate terminals:
 
@@ -31,59 +31,32 @@ A neighborhood-based micro-delivery and local task network for Bangladesh. Custo
    npm run dev:client
    ```
 
-4. Open `http://localhost:5173` and create an account as a customer or runner. The server prefers port 5000, but retries on 5001 if that port is occupied; the local Vite proxy is set to 5001 for this machine.
+   On Windows, `start-all.cmd` starts the frontend and backend. The backend reads `MONGO_URI` from `server/.env`.
 
-### Demo Accounts
+4. Open `http://localhost:5173` and create an account as a customer or runner. The server uses port 5001 by default (or the `PORT` value in `server/.env`). The local Vite proxy reads the same port from `server/.env`; if the port is occupied, stop the other process or choose another `PORT` value.
 
-To create customer, runner, and admin demo accounts in a local MongoDB database, set the following value in `server/.env`:
+### Optional Local Demo Seeder
 
-```env
-MONGO_URI=mongodb://127.0.0.1:27017/parasync
-```
-
-Then run:
-
-```sh
-npm run seed:demo --prefix server
-```
-
-Demo login credentials:
-
-| Role | Email | Password |
-|---|---|---|
-| Customer | `customer@gmail.com` | `customer` |
-| Runner | `runner@gmail.com` | `runner12` |
-| Admin | `admin@gmail.com` | `admin123` |
-
-These weak demo passwords and the demo admin account are intended for local development only. The script refuses to create accounts in production environments or in MongoDB instances hosted outside localhost.
+Development demo users require development-only `DEMO_*` variables. Demo users are never created in production.
 
 The admin dashboard allows administrators to view all accounts and temporarily deactivate or reactivate customer and runner accounts.
 
 ### Setting Up an Admin Account for a Remote Database
 
-To create a separate admin account for Atlas or another remote database, configure the following values in `server/.env`:
+Set these variables in the server environment:
 
 ```env
-ALLOW_ADMIN_SETUP=true
-ADMIN_NAME=Your Admin Name
-ADMIN_EMAIL=your-admin@example.com
-ADMIN_PHONE=Your Admin Phone
-ADMIN_PASSWORD=YourStrongPassword
+ADMIN_EMAIL=you@example.com
+ADMIN_PASSWORD=change-me
 ```
 
-The admin password must contain at least 12 characters.
-
-Run the following command:
+Run the bootstrap command:
 
 ```sh
 npm run setup:admin --prefix server
 ```
 
-This command creates an admin account only when explicit permission and a strong new password are provided. It does not modify existing users or promote existing accounts to admin.
-
-After setup, remove `ALLOW_ADMIN_SETUP` and the admin bootstrap values from `.env`.
-
-Never use demo passwords such as `admin123` with remote or production databases.
+The script creates a super admin only if no account already uses `ADMIN_EMAIL`. Keep the real values in environment configuration and do not commit them.
 
 ## Features
 
@@ -136,6 +109,23 @@ OTP data is encrypted in the database using AES-256-GCM.
 - `server/src/models/User.js`: User identity, role, password hash, trust score, and runner task limit.
 - `server/src/models/Task.js`: Task details, GeoJSON locations, status, encrypted OTPs, and disputes.
 - `server/src/models/Bid.js`: Runner offers, with one offer per runner for each task.
+
+## Super Admin Setup (ADMIN_EMAIL / ADMIN_PASSWORD)
+
+Create the initial super admin account from `.env` environment variables:
+
+1. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (minimum 12 characters) in `server/.env`.
+2. Run:
+
+   ```sh
+   npm run setup:admin --prefix server
+   ```
+
+   The script creates a `super_admin` account only when one does not already exist for that email. If the account already exists, it makes no changes.
+
+3. Log in as the super admin at `http://localhost:5173`, then use the Admin panel to invite sub-admins with scoped permissions (`users`, `runner_approval`, `tasks`, `reports`). Sub-admins cannot create or delete other admin accounts.
+
+Demo account credentials are for local development only and are never created in production.
 
 ## Manual Testing
 

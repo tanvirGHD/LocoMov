@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">LocoMuv — Neighborhood Errands in Dhaka</title>
+  <desc id="description">Local help for everyday errands and deliveries across Dhaka neighborhoods.</desc>
+  <rect width="1200" height="630" fill="#f7f1e8"/>
+  <circle cx="1020" cy="90" r="240" fill="#ead7c6" opacity=".65"/>
+  <circle cx="80" cy="590" r="220" fill="#e8eee4" opacity=".9"/>
+  <path d="M90 465c165-115 240-7 365-95s192-13 296-91 204-51 352-148" fill="none" stroke="#c7865b" stroke-width="8" stroke-linecap="round" stroke-dasharray="2 22"/>
+  <circle cx="458" cy="371" r="16" fill="#814124"/>
+  <circle cx="751" cy="279" r="16" fill="#377657"/>
+  <circle cx="1099" cy="131" r="16" fill="#814124"/>
+  <rect x="100" y="105" width="1000" height="420" rx="38" fill="#fffdf9" stroke="#eadfd2" stroke-width="2"/>
+  <text x="164" y="260" fill="#30231c" font-family="Arial, Helvetica, sans-serif" font-size="88" font-weight="700">Loco<tspan fill="#984826">Muv</tspan></text>
+  <text x="168" y="335" fill="#624b3b" font-family="Arial, Helvetica, sans-serif" font-size="38" font-weight="600">Local help for the everyday rush.</text>
+  <text x="168" y="397" fill="#7a756d" font-family="Arial, Helvetica, sans-serif" font-size="28">Trusted neighborhood errands and deliveries across Dhaka.</text>
+  <rect x="168" y="438" width="220" height="48" rx="24" fill="#814124"/>
+  <text x="278" y="470" fill="#fff" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">DHAKA, BANGLADESH</text>
+</svg>

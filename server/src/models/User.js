@@ -22,17 +22,19 @@ const userSchema = new Schema({
   },
   phone: {
     type: String,
-    required: [true, 'Phone number is required'],
+    required() { return !['admin', 'super_admin', 'sub_admin'].includes(this.role); },
     unique: true,
+    sparse: true,
     trim: true,
     set(value) {
+      if (!value) return value;
       const digits = value.replace(/[^\d+]/g, '');
       if (/^01[3-9]\d{8}$/.test(digits)) return `+88${digits}`;
       if (/^8801[3-9]\d{8}$/.test(digits)) return `+${digits}`;
       return digits;
     },
     validate: {
-      validator: (value) => /^\+8801[3-9]\d{8}$/.test(value),
+      validator: (value) => !value || /^\+8801[3-9]\d{8}$/.test(value),
       message: 'Please enter a valid Bangladeshi mobile number',
     },
     index: true,
@@ -46,7 +48,7 @@ const userSchema = new Schema({
   },
   role: {
     type: String,
-    enum: ['customer', 'runner', 'admin'],
+    enum: ['customer', 'runner', 'admin', 'super_admin', 'sub_admin'],
     default: 'customer',
     required: true,
     index: true,
@@ -68,6 +70,14 @@ const userSchema = new Schema({
     max: [120, 'Please enter a valid age'],
     default: null,
   },
+  dateOfBirth: { type: Date, default: null },
+  emailVerified: { type: Boolean, default: false, index: true },
+  phoneVerified: { type: Boolean, default: false },
+  failedLoginAttempts: { type: Number, default: 0, select: false },
+  lockUntil: { type: Date, default: null, select: false },
+  sessionVersion: { type: Number, default: 0 },
+  permissions: { type: [String], enum: ['users', 'runner_approval', 'tasks', 'reports'], default: [] },
+  trustedDevices: [{ tokenHash: String, expiresAt: Date }],
   emergencyContact: {
     type: String,
     default: '',
@@ -122,6 +132,10 @@ const userSchema = new Schema({
 });
 
 userSchema.pre('save', async function hashPassword() {
+  if (this.role === 'runner' && !this.emergencyContact) {
+    throw new Error('Runner accounts require an emergency contact.');
+  }
+  if (['admin', 'super_admin', 'sub_admin'].includes(this.role)) this.emailVerified = true;
   if (!this.isModified('password')) return;
   this.password = await bcrypt.hash(this.password, 12);
 });

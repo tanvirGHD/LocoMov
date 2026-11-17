@@ -41,6 +41,36 @@ export async function listUsers(req, res) {
   })) });
 }
 
+export async function createSubAdmin(req, res) {
+  if (req.adminRole !== 'super_admin') return res.status(403).json({ message: 'Only a super admin can manage sub-admins.' });
+  const data = parsedOrRespond(z.object({
+    name: z.string().trim().min(2).max(80), email: z.string().trim().email().max(254),
+    password: z.string().min(12).max(128), phone: z.string().trim().regex(/^(\+?88)?01[3-9]\d{8}$/).optional(),
+    permissions: z.array(z.enum(['users', 'runner_approval', 'tasks', 'reports'])).max(4),
+  }), req.body, res);
+  if (!data) return;
+  try {
+    const subAdmin = await User.create({ ...data, email: data.email.toLowerCase(), role: 'sub_admin', emailVerified: true });
+    return res.status(201).json({ user: { id: subAdmin._id, name: subAdmin.name, email: subAdmin.email, permissions: subAdmin.permissions } });
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ message: 'An account already uses that email or phone.' });
+    throw error;
+  }
+}
+
+export async function listSubAdmins(req, res) {
+  if (req.adminRole !== 'super_admin') return res.status(403).json({ message: 'Only a super admin can manage sub-admins.' });
+  const users = await User.find({ role: 'sub_admin' }).select('name email phone permissions isActive createdAt').sort({ createdAt: -1 }).lean();
+  return res.json({ users });
+}
+
+export async function deleteSubAdmin(req, res) {
+  if (req.adminRole !== 'super_admin') return res.status(403).json({ message: 'Only a super admin can manage sub-admins.' });
+  const subAdmin = await User.findOneAndDelete({ _id: req.params.userId, role: 'sub_admin' });
+  if (!subAdmin) return res.status(404).json({ message: 'Sub-admin account not found.' });
+  return res.json({ message: 'Sub-admin removed.' });
+}
+
 export async function setUserStatus(req, res) {
   const parsed = z.object({ isActive: z.boolean() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: 'Please provide a valid account status.' });
@@ -74,7 +104,7 @@ export async function setRunnerVerification(req, res) {
 export async function deleteUser(req, res) {
   const user = await User.findById(req.params.userId);
   if (!user) return res.status(404).json({ message: 'User not found.' });
-  if (user.role === 'admin') return res.status(403).json({ message: 'Admin accounts cannot be deleted from here.' });
+  if (['admin', 'super_admin', 'sub_admin'].includes(user.role)) return res.status(403).json({ message: 'Admin accounts cannot be deleted from here.' });
   if (String(user._id) === String(req.user._id)) return res.status(400).json({ message: 'You cannot delete your own account.' });
 
   await Task.updateMany(

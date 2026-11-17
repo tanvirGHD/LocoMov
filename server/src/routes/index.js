@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { register, login, logout, me, getUserReviews } from '../controllers/authController.js';
+import { register, logout, me, getUserReviews, updateProfile } from '../controllers/authController.js';
+import { login as beginLogin, verifyLoginCode, registerCodes, forgotPassword, resetPassword, sendAccountChangeCode, completeAccountChange, updatePassword } from '../controllers/authSecurityController.js';
 import {
   acceptBid,
   acceptTask,
@@ -22,7 +23,8 @@ import {
   verifyPickupOtp,
   updateDeliveryStatus,
 } from '../controllers/taskController.js';
-import { requireAuth, requireRole } from '../middleware/auth.js';
+import { requireAuth, requireRole, requireApprovedRunner } from '../middleware/auth.js';
+import { requireAdminPermission, enforceAdminPermissionWhenAdmin, auditAdminAction } from '../middleware/admin.js';
 import { handleAvatarUpload } from '../middleware/upload.js';
 import {
   adminBulkDeleteTasks,
@@ -42,6 +44,9 @@ import {
   setRunnerVerification,
   setUserStatus,
   updateReport,
+  createSubAdmin,
+  listSubAdmins,
+  deleteSubAdmin,
 } from '../controllers/adminController.js';
 import {
   deleteConversationMessage,
@@ -77,61 +82,78 @@ const actionLimiter = rateLimit({
   message: { message: 'Rate limit reached. Please try again shortly.' },
 });
 
+const codeLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Code request limit reached. Try again later.' } });
+const verifyLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many code attempts. Try again later.' } });
+const forgotLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: 'draft-7', legacyHeaders: false, message: { message: 'Too many attempts. Try again later.' } });
+router.post('/auth/register/codes', codeLimiter, wrap(registerCodes));
+router.get('/auth/config', (_req, res) => res.json({ turnstileSiteKey: process.env.TURNSTILE_SITE_KEY || '' }));
 router.post('/auth/register', authLimiter, handleAvatarUpload, wrap(register));
-router.post('/auth/login', authLimiter, wrap(login));
+router.post('/auth/login', codeLimiter, authLimiter, wrap(beginLogin));
+router.post('/auth/login/verify', verifyLimiter, wrap(verifyLoginCode));
+router.post('/auth/forgot-password', forgotLimiter, wrap(forgotPassword));
+router.post('/auth/reset-password', verifyLimiter, wrap(resetPassword));
 router.post('/auth/logout', logout);
 router.get('/auth/me', requireAuth, wrap(me));
 
 router.get('/tasks/public', wrap(listPublicTasks));
 router.use(requireAuth);
 router.get('/dashboard', wrap(dashboard));
-router.get('/admin/users', requireRole('admin'), wrap(listUsers));
-router.patch('/admin/users/:userId/status', requireRole('admin'), actionLimiter, wrap(setUserStatus));
-router.patch('/admin/users/:userId/verification', requireRole('admin'), actionLimiter, wrap(setRunnerVerification));
-router.delete('/admin/users/:userId', requireRole('admin'), actionLimiter, wrap(deleteUser));
-router.patch('/admin/tasks/:taskId', requireRole('admin'), actionLimiter, wrap(adminUpdateTask));
-router.delete('/admin/tasks/:taskId', requireRole('admin'), actionLimiter, wrap(adminDeleteTask));
-router.post('/admin/tasks/bulk-delete', requireRole('admin'), actionLimiter, wrap(adminBulkDeleteTasks));
-router.get('/admin/reviews', requireRole('admin'), wrap(listReviews));
-router.delete('/admin/reviews/:reviewId', requireRole('admin'), actionLimiter, wrap(deleteReview));
-router.get('/admin/conversations', requireRole('admin'), wrap(listConversations));
-router.get('/admin/conversations/:id/messages', requireRole('admin'), wrap(adminListMessages));
-router.delete('/admin/conversations/:id', requireRole('admin'), actionLimiter, wrap(adminDeleteConversation));
-router.delete('/admin/messages/:messageId', requireRole('admin'), actionLimiter, wrap(adminDeleteMessage));
-router.get('/admin/reports', requireRole('admin'), wrap(listReports));
-router.patch('/admin/reports/:reportId', requireRole('admin'), actionLimiter, wrap(updateReport));
-router.delete('/admin/reports/:reportId', requireRole('admin'), actionLimiter, wrap(deleteReport));
-router.get('/admin/audit', requireRole('admin'), wrap(listAuditLogs));
-router.get('/tasks/nearby', requireRole('runner'), wrap(nearbyTasks));
-router.get('/tasks', wrap(listTasks));
+router.post('/auth/account/change-code', codeLimiter, wrap(sendAccountChangeCode));
+router.post('/auth/account/change-code/verify', verifyLimiter, wrap(completeAccountChange));
+router.patch('/auth/account/password', actionLimiter, wrap(updatePassword));
+router.patch('/auth/account/profile', requireAuth, actionLimiter, handleAvatarUpload, wrap(updateProfile));
+router.use('/admin', auditAdminAction);
+router.get('/admin/users', requireAdminPermission('users'), wrap(listUsers));
+router.patch('/admin/users/:userId/status', requireAdminPermission('users'), actionLimiter, wrap(setUserStatus));
+router.patch('/admin/users/:userId/verification', requireAdminPermission('runner_approval'), actionLimiter, wrap(setRunnerVerification));
+router.delete('/admin/users/:userId', requireAdminPermission('users'), actionLimiter, wrap(deleteUser));
+router.get('/admin/sub-admins', requireAdminPermission('users'), wrap(listSubAdmins));
+router.post('/admin/sub-admins', requireAdminPermission('users'), actionLimiter, wrap(createSubAdmin));
+router.delete('/admin/sub-admins/:userId', requireAdminPermission('users'), actionLimiter, wrap(deleteSubAdmin));
+router.patch('/admin/tasks/:taskId', requireAdminPermission('tasks'), actionLimiter, wrap(adminUpdateTask));
+router.delete('/admin/tasks/:taskId', requireAdminPermission('tasks'), actionLimiter, wrap(adminDeleteTask));
+router.post('/admin/tasks/bulk-delete', requireAdminPermission('tasks'), actionLimiter, wrap(adminBulkDeleteTasks));
+router.get('/admin/reviews', requireAdminPermission('tasks'), wrap(listReviews));
+router.delete('/admin/reviews/:reviewId', requireAdminPermission('tasks'), actionLimiter, wrap(deleteReview));
+router.get('/admin/conversations', requireAdminPermission('reports'), wrap(listConversations));
+router.get('/admin/conversations/:id/messages', requireAdminPermission('reports'), wrap(adminListMessages));
+router.delete('/admin/conversations/:id', requireAdminPermission('reports'), actionLimiter, wrap(adminDeleteConversation));
+router.delete('/admin/messages/:messageId', requireAdminPermission('reports'), actionLimiter, wrap(adminDeleteMessage));
+router.get('/admin/reports', requireAdminPermission('reports'), wrap(listReports));
+router.patch('/admin/reports/:reportId', requireAdminPermission('reports'), actionLimiter, wrap(updateReport));
+router.delete('/admin/reports/:reportId', requireAdminPermission('reports'), actionLimiter, wrap(deleteReport));
+router.get('/admin/audit', requireAdminPermission('reports'), wrap(listAuditLogs));
+router.get('/tasks/nearby', requireRole('runner'), requireApprovedRunner, wrap(nearbyTasks));
+router.get('/tasks', auditAdminAction, enforceAdminPermissionWhenAdmin('tasks'), wrap(listTasks));
 router.post('/tasks', requireRole('customer'), actionLimiter, wrap(createTask));
 router.post('/tasks/bulk-delete', requireRole('customer'), actionLimiter, wrap(bulkDeleteTasks));
-router.get('/tasks/:taskId', wrap(getTask));
-router.delete('/tasks/:taskId', actionLimiter, wrap(deleteTask));
-router.post('/tasks/:taskId/accept', requireRole('runner'), actionLimiter, wrap(acceptTask));
-router.post('/tasks/:taskId/bids', requireRole('runner'), actionLimiter, wrap(createBid));
-router.get('/tasks/:taskId/bids', wrap(listBids));
+router.get('/tasks/:taskId', auditAdminAction, enforceAdminPermissionWhenAdmin('tasks'), wrap(getTask));
+router.delete('/tasks/:taskId', auditAdminAction, enforceAdminPermissionWhenAdmin('tasks'), actionLimiter, wrap(deleteTask));
+router.post('/tasks/:taskId/accept', requireRole('runner'), requireApprovedRunner, actionLimiter, wrap(acceptTask));
+router.post('/tasks/:taskId/bids', requireRole('runner'), requireApprovedRunner, actionLimiter, wrap(createBid));
+router.get('/tasks/:taskId/bids', auditAdminAction, enforceAdminPermissionWhenAdmin('tasks'), wrap(listBids));
 router.post('/tasks/:taskId/bids/:bidId/accept', requireRole('customer'), actionLimiter, wrap(acceptBid));
-router.post('/tasks/:taskId/pickup-otp', requireRole('runner'), actionLimiter, wrap(verifyPickupOtp));
-router.patch('/tasks/:taskId/status', requireRole('runner'), actionLimiter, wrap(updateDeliveryStatus));
-router.post('/tasks/:taskId/delivery-otp', requireRole('runner'), actionLimiter, wrap(verifyDeliveryOtp));
-router.patch('/tasks/:taskId/cancel', actionLimiter, wrap(cancelTask));
-router.post('/tasks/:taskId/cancel', actionLimiter, wrap(cancelTask));
+router.post('/tasks/:taskId/pickup-otp', requireRole('runner'), requireApprovedRunner, actionLimiter, wrap(verifyPickupOtp));
+router.patch('/tasks/:taskId/status', requireRole('runner'), requireApprovedRunner, actionLimiter, wrap(updateDeliveryStatus));
+router.post('/tasks/:taskId/delivery-otp', requireRole('runner'), requireApprovedRunner, actionLimiter, wrap(verifyDeliveryOtp));
+router.patch('/tasks/:taskId/cancel', auditAdminAction, enforceAdminPermissionWhenAdmin('tasks'), actionLimiter, wrap(cancelTask));
+router.post('/tasks/:taskId/cancel', auditAdminAction, enforceAdminPermissionWhenAdmin('tasks'), actionLimiter, wrap(cancelTask));
 router.post('/tasks/:taskId/review', actionLimiter, wrap(createTaskReview));
 router.get('/users/:id/reviews', wrap(getUserReviews));
 router.post('/tasks/:taskId/disputes', actionLimiter, wrap(openDispute));
-router.post('/tasks/:taskId/disputes/resolve', requireRole('admin'), actionLimiter, wrap(resolveDispute));
+router.post('/tasks/:taskId/disputes/resolve', auditAdminAction, requireAdminPermission('tasks'), actionLimiter, wrap(resolveDispute));
 
-router.get('/conversations', requireAuth, wrap(loadMyConversations));
-router.get('/conversations/unread', requireAuth, wrap(getConversationUnreadSummary));
-router.get('/conversations/job/:taskId', requireAuth, wrap(getConversationByJob));
-router.get('/conversations/:id/messages', requireAuth, wrap(getConversationMessages));
-router.delete('/conversations/:id/messages/:messageId', requireAuth, actionLimiter, wrap(deleteConversationMessage));
-router.get('/conversations/:id/audit', requireAuth, wrap(getConversationAuditLog));
-router.post('/conversations/:id/messages', requireAuth, upload.single('image'), wrap(sendConversationMessage));
-router.post('/conversations/:id/seen', requireAuth, wrap(markConversationSeen));
-router.post('/conversations/:id/report', requireAuth, wrap(reportConversation));
-router.post('/conversations/:id/moderate', requireAuth, wrap(toggleConversationModeration));
+const reportAdminPermission = enforceAdminPermissionWhenAdmin('reports');
+router.get('/conversations', requireAuth, reportAdminPermission, wrap(loadMyConversations));
+router.get('/conversations/unread', requireAuth, reportAdminPermission, wrap(getConversationUnreadSummary));
+router.get('/conversations/job/:taskId', requireAuth, reportAdminPermission, wrap(getConversationByJob));
+router.get('/conversations/:id/messages', requireAuth, reportAdminPermission, wrap(getConversationMessages));
+router.delete('/conversations/:id/messages/:messageId', requireAuth, reportAdminPermission, actionLimiter, wrap(deleteConversationMessage));
+router.get('/conversations/:id/audit', requireAuth, reportAdminPermission, wrap(getConversationAuditLog));
+router.post('/conversations/:id/messages', requireAuth, auditAdminAction, reportAdminPermission, upload.single('image'), wrap(sendConversationMessage));
+router.post('/conversations/:id/seen', requireAuth, auditAdminAction, reportAdminPermission, wrap(markConversationSeen));
+router.post('/conversations/:id/report', requireAuth, auditAdminAction, reportAdminPermission, wrap(reportConversation));
+router.post('/conversations/:id/moderate', requireAuth, auditAdminAction, requireAdminPermission('reports'), wrap(toggleConversationModeration));
 router.get('/notifications', requireAuth, wrap(listNotifications));
 router.post('/notifications/:id/read', requireAuth, wrap(markNotificationRead));
 router.post('/notifications/read-all', requireAuth, wrap(markAllNotificationsRead));

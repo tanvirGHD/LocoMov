@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Circle, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -9,7 +9,8 @@ import ReviewModal from '../components/ReviewModal';
 import AdminControlPanel from '../components/AdminControlPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
-import { Bike, MapPin, ShieldCheck, Eye, Users, Lock, Activity, Globe } from 'lucide-react';
+import { Bike, MapPin, ShieldCheck, Eye, EyeOff, Globe2, Home as HomeIcon, Settings, Package } from 'lucide-react';
+import { groupTasks, ACTIVE_STATUSES, PENDING_STATUSES, DONE_STATUSES, CANCELLED_STATUSES } from '../utils/taskStatus';
 
 const dhaka = [23.8103, 90.4126];
 const taskIcon = L.divIcon({ className: 'map-marker-wrap', html: '<span class="map-marker"><i></i></span>', iconSize: [26, 34], iconAnchor: [13, 30] });
@@ -33,7 +34,7 @@ const statusNamesByLanguage = {
     arriving: 'কাছাকাছি পৌঁছাচ্ছে',
     completed: 'ডেলিভার হয়েছে',
     cancelled: 'বাতিল',
-  }
+  },
 };
 const deliveryStagesByLanguage = {
   en: [
@@ -47,7 +48,7 @@ const deliveryStagesByLanguage = {
     { status: 'in-transit', label: 'রওনা হয়েছে' },
     { status: 'arriving', label: 'কাছাকাছি' },
     { status: 'completed', label: 'ডেলিভার হয়েছে' },
-  ]
+  ],
 };
 
 function coordinates(location) {
@@ -74,7 +75,6 @@ function MapPickerEvents({ onSelect, selectedPosition }) {
 
 async function fetchLocationSuggestions(query) {
   if (!query || query.trim().length < 2) return [];
-
   try {
     const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&addressdetails=1&countrycodes=bd&q=${encodeURIComponent(query)}`);
     if (!response.ok) return [];
@@ -97,7 +97,6 @@ function LocationFields({ prefix, label, values, onChange, selectedPosition, onS
       setSuggestions([]);
       return undefined;
     }
-
     let active = true;
     const timer = window.setTimeout(async () => {
       setSearchingLocation(true);
@@ -107,7 +106,6 @@ function LocationFields({ prefix, label, values, onChange, selectedPosition, onS
         setSearchingLocation(false);
       }
     }, 300);
-
     return () => {
       active = false;
       window.clearTimeout(timer);
@@ -161,7 +159,7 @@ function LocationFields({ prefix, label, values, onChange, selectedPosition, onS
           ))}
         </div>
       )}
-      {searchingLocation && <div className="location-searching">সuggesting locations...</div>}
+      {searchingLocation && <div className="location-searching">লোকেশন খুঁজছি...</div>}
       <div className="location-picker-actions">
         <button type="button" className="text-button" onClick={() => setExpanded((open) => !open)}>
           {expanded ? 'মানচিত্র বন্ধ করুন' : selectedPosition ? 'মানচিত্রে স্থান বদলান' : 'মানচিত্রে স্থান বাছাই করুন'}
@@ -202,39 +200,20 @@ function LocationFields({ prefix, label, values, onChange, selectedPosition, onS
   );
 }
 
-function TaskMap({ tasks, center, radius = false }) {
-  const mapCenter = center || dhaka;
-  return (
-    <div className="map-frame">
-      <MapContainer center={mapCenter} zoom={15} maxZoom={19} scrollWheelZoom doubleClickZoom zoomControl key={`${mapCenter[0]}-${mapCenter[1]}`}>
-        <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={19} />
-        {radius && <Circle center={mapCenter} radius={5000} pathOptions={{ color: '#984826', fillColor: '#984826', fillOpacity: 0.06, weight: 1 }} />}
-        {tasks.map((task) => {
-          const point = coordinates(task.pickupLocation);
-          if (!point) return null;
-          return <Marker key={task._id} position={point} icon={taskIcon}><Popup><b>{task.title}</b><br />{task.pickupAddress || 'পিকআপ স্থান'}<br />{money(task.finalPrice ?? task.estimatedPrice)}</Popup></Marker>;
-        })}
-      </MapContainer>
-      <div className="map-caption"><span className="online-dot" />{tasks.length}টি কাজ মানচিত্রে</div>
-    </div>
-  );
-}
-
 function StatCard({ icon, label, value, tone = '', language = 'en' }) {
   const locale = language === 'bn' ? 'bn-BD' : 'en-US';
   const displayValue = typeof value === 'number' ? value.toLocaleString(locale) : value || (language === 'bn' ? '০' : '0');
   return <article className={`stat-card ${tone}`}><span className="stat-icon">{icon}</span><div><span>{label}</span><b>{displayValue}</b></div></article>;
 }
 
-function TaskCard({ task, user, onRefresh, onError, bids, setBids, runnerPosition, loadNearby, statusNames, deliveryStages, copy, onOpenChat, onReview, selected, onToggleSelect, onAdminEdit, onAdminDelete }) {
+function TaskCard({ task, user, onRefresh, onError, bids, setBids, runnerPosition, statusNames, deliveryStages, copy, onOpenChat, onReview, selected, onToggleSelect, onAdminEdit, onAdminDelete }) {
   const [otp, setOtp] = useState('');
   const [bidForm, setBidForm] = useState({ proposedPrice: task.estimatedPrice, deliveryTime: 30 });
   const [loading, setLoading] = useState(false);
   const [bidLoading, setBidLoading] = useState(false);
-  const [showBids, setShowBids] = useState(false);
   const isRunner = user.role === 'runner';
-  const isAdmin = user.role === 'admin';
-  const canChat = user.role !== 'admin' && !!task.runnerId && ['accepted', 'picked-up', 'in-transit', 'arriving', 'completed', 'cancelled'].includes(task.status);
+  const isAdmin = ['admin', 'super_admin', 'sub_admin'].includes(user.role);
+  const canChat = !isAdmin && !!task.runnerId && ['accepted', 'picked-up', 'in-transit', 'arriving', 'completed', 'cancelled'].includes(task.status);
   const chatReadOnly = ['completed', 'cancelled'].includes(task.status) && !!(task.completedAt || task.cancelledAt) && Date.now() - new Date(task.completedAt || task.cancelledAt).getTime() > 48 * 60 * 60 * 1000;
   const canCancel = ['pending', 'accepted'].includes(task.status);
   const canDeletePost = user.role === 'customer' &&
@@ -281,17 +260,6 @@ function TaskCard({ task, user, onRefresh, onError, bids, setBids, runnerPositio
     }
   }
 
-  async function loadBids() {
-    setShowBids((previous) => !previous);
-    if (bids[task._id]) return;
-    try {
-      const result = await api.bids(task._id);
-      setBids((current) => ({ ...current, [task._id]: result.bids }));
-    } catch (error) {
-      onError(error.message);
-    }
-  }
-
   async function sendBid(event) {
     event.preventDefault();
     setBidLoading(true);
@@ -308,18 +276,6 @@ function TaskCard({ task, user, onRefresh, onError, bids, setBids, runnerPositio
       onError(error.message);
     } finally {
       setBidLoading(false);
-    }
-  }
-
-  async function chooseBid(bidId) {
-    setLoading(true);
-    try {
-      await api.acceptBid(task._id, bidId);
-      await onRefresh();
-    } catch (error) {
-      onError(error.message);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -367,30 +323,28 @@ function TaskCard({ task, user, onRefresh, onError, bids, setBids, runnerPositio
         <div><small>{isRunner ? copy.customer : copy.runner}</small><b>{isRunner ? task.customerId?.name || copy.localCustomer : task.runnerId?.name || copy.notAvailable}</b></div>
         {task.disputeStatus === 'open' && <span className="dispute-pill">{copy.disputeOpen}</span>}
       </div>
-      {['accepted', 'picked-up', 'in-transit', 'arriving', 'completed'].includes(task.status) && <ol className="delivery-progress" aria-label={copy.progressLabel}>
-        {deliveryStages.map((stage, index) => {
-          const currentIndex = deliveryStages.findIndex((item) => item.status === task.status);
-          const complete = currentIndex >= index;
-          return <li key={stage.status} className={`${complete ? 'stage-complete' : ''} ${task.status === stage.status ? 'stage-current' : ''}`}>
-            <span className="stage-marker">{complete ? '✓' : index + 1}</span><small>{stage.label}</small>
-          </li>;
-        })}
+      {user.role !== 'customer' && ['accepted', 'picked-up', 'in-transit', 'arriving', 'completed'].includes(task.status) && <ol className="delivery-progress" aria-label={copy.progressLabel}>
+        {deliveryStages.filter((stage) => stage.status === task.status).map((stage) => (
+          <li key={stage.status} className="stage-item stage-current">
+            <span className="stage-marker">●</span><small>{stage.label}</small>
+          </li>
+        ))}
       </ol>}
-      {user.role === 'customer' && ['accepted', 'picked-up', 'in-transit', 'arriving'].includes(task.status) && (task.pickupOTP || task.deliveryOTP) &&
+      {user.role !== 'customer' && ['accepted', 'picked-up', 'in-transit', 'arriving'].includes(task.status) && (task.pickupOTP || task.deliveryOTP) &&
         <div className="customer-otp"><span>{copy.secureShare}</span><b>{copy.otpText}: {task.pickupOTP} <i>·</i> {copy.deliveryOtpText}: {task.deliveryOTP}</b></div>}
-      {isRunner && task.status === 'accepted' && <form className="otp-form" onSubmit={(event) => { event.preventDefault(); act('pickup'); }}>
+      {user.role === 'runner' && task.status === 'accepted' && <form className="otp-form" onSubmit={(event) => { event.preventDefault(); act('pickup'); }}>
         <label>{copy.customerOtp}<input inputMode="numeric" maxLength="4" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, ''))} placeholder={copy.otpPlaceHolder} required /></label>
         <button className="button button-primary button-small" disabled={loading}>{loading ? copy.verifying : copy.confirmPickup}</button>
       </form>}
-      {isRunner && task.status === 'picked-up' && <div className="runner-stage-action">
+      {user.role === 'runner' && task.status === 'picked-up' && <div className="runner-stage-action">
         <p>{copy.orderPicked}</p>
         <button className="button button-primary button-small" onClick={() => act('depart')} disabled={loading}>{loading ? copy.updating : copy.departed}</button>
       </div>}
-      {isRunner && task.status === 'in-transit' && <div className="runner-stage-action">
+      {user.role === 'runner' && task.status === 'in-transit' && <div className="runner-stage-action">
         <p>{copy.nearDestination}</p>
         <button className="button button-primary button-small" onClick={() => act('arriving')} disabled={loading}>{loading ? copy.updating : copy.nearby}</button>
       </div>}
-      {isRunner && task.status === 'arriving' && <form className="otp-form" onSubmit={(event) => { event.preventDefault(); act('delivery'); }}>
+      {user.role === 'runner' && task.status === 'arriving' && <form className="otp-form" onSubmit={(event) => { event.preventDefault(); act('delivery'); }}>
         <label>{copy.deliveryOtpLabel}<input inputMode="numeric" maxLength="4" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, ''))} placeholder={copy.otpPlaceHolder} required /></label>
         <button className="button button-primary button-small" disabled={loading}>{loading ? copy.verifying : copy.confirmDelivery}</button>
       </form>}
@@ -400,23 +354,14 @@ function TaskCard({ task, user, onRefresh, onError, bids, setBids, runnerPositio
         <button className="button button-primary button-small" onClick={() => act('accept')} disabled={loading}>{loading ? copy.waiting : copy.takeJob}</button>
         <form className="bid-form" onSubmit={sendBid}>
           <label>{copy.offer} ৳<input type="number" min="1" max={Math.min(user.runnerLimit, task.estimatedPrice)} value={bidForm.proposedPrice} onChange={(event) => setBidForm({ ...bidForm, proposedPrice: event.target.value })} required /></label>
-          <label>{copy.minutes}<input type="number" min="1" max="10080" value={bidForm.deliveryTime} onChange={(event) => setBidForm({ ...bidForm, deliveryTime: event.target.value })} required /></label>
+          <label>{copy.minutes}<input type="number" min="1" max={10080} value={bidForm.deliveryTime} onChange={(event) => setBidForm({ ...bidForm, deliveryTime: event.target.value })} required /></label>
           <button className="button button-outline button-small" disabled={bidLoading}>{bidLoading ? copy.sending : copy.sendOffer}</button>
         </form>
       </div>}
-      {task.status === 'pending' && user.role === 'customer' && <button className="text-button" onClick={loadBids}>{showBids ? copy.hideOffers : copy.viewOffers} <span>({bids[task._id]?.length || '—'})</span></button>}
-      {showBids && user.role === 'customer' && <div className="bid-list">
-        {(bids[task._id] || []).length === 0 ? <p>{copy.noOffers}</p> : (bids[task._id] || []).map((bid) => <div className="bid-row" key={bid._id}>
-          <span className="runner-avatar small-avatar">{bid.runnerId?.name?.slice(0, 1) || 'R'}</span>
-          <div><b>{bid.runnerId?.name || copy.runner}</b><small>{copy.trustScore} {Number(bid.runnerId?.trustScore || 100).toLocaleString(copy.numberLocale)} · {bid.deliveryTime.toLocaleString(copy.numberLocale)} {copy.minutesShort}</small></div>
-          <strong>{money(bid.proposedPrice)}</strong>
-          <button className="button button-primary button-small" onClick={() => chooseBid(bid._id)} disabled={loading || bid.status !== 'pending'}>{bid.status === 'accepted' ? copy.selected : bid.status === 'rejected' ? copy.rejected : copy.accept}</button>
-        </div>)}
-      </div>}
-      {canChat && <div className="task-footer-actions"><button className="button button-outline button-small" onClick={() => onOpenChat(task)}>{chatReadOnly ? copy.chatReadOnly : copy.chat}</button></div>}
-      {canReview && <button className="button button-primary button-small" onClick={() => onReview(task)}>{copy.rateRunner}</button>}
+      {user.role !== 'customer' && canChat && onOpenChat && <div className="task-footer-actions"><button className="button button-outline button-small" onClick={() => onOpenChat(task)}>{chatReadOnly ? copy.chatReadOnly : copy.chat}</button></div>}
+      {user.role !== 'customer' && canReview && <button className="button button-primary button-small" onClick={() => onReview(task)}>{copy.rateRunner}</button>}
       {isCustomerOwner && task.customerRating ? <p className="given-rating">{copy.yourRating}: {'★'.repeat(task.customerRating)}{'☆'.repeat(5 - task.customerRating)}</p> : null}
-      {((canCancel && (user.role === 'admin' || isCustomerOwner || (isRunner && String(task.runnerId?._id || task.runnerId) === String(user.id)))) || canDeletePost || isAdmin) ?
+      {((canCancel && (isAdmin || isCustomerOwner || (isRunner && String(task.runnerId?._id || task.runnerId) === String(user.id)))) || canDeletePost || isAdmin) ?
         <div className="task-footer-actions">
           {canCancel && <button className="text-button text-danger" onClick={() => act('cancel')} disabled={loading}>{copy.cancelTask}</button>}
           {canDeletePost && <button className="text-button text-danger" onClick={() => act('delete')} disabled={loading}>{loading ? copy.deleting : copy.deleteTask}</button>}
@@ -430,12 +375,22 @@ function TaskCard({ task, user, onRefresh, onError, bids, setBids, runnerPositio
   );
 }
 
-export default function Home({ language = 'en' }) {
-  const { user, refreshUser } = useAuth();
+function HomeInner({ language = 'en', setLanguage, setAdminView }) {
+  const { user, refreshUser, logout } = useAuth();
+  const navigate = useNavigate();
+  const userRef = useRef(user);
+  userRef.current = user;
+
+  const isAdmin = ['admin', 'super_admin', 'sub_admin'].includes(user.role);
+
+  useEffect(() => {
+    setAdminView?.(isAdmin);
+  }, [isAdmin, setAdminView]);
+
   const { search } = useLocation();
   const focusTaskId = new URLSearchParams(search).get('taskId');
   const isBn = language === 'bn';
-  const DashboardRoleIcon = user.role === 'runner' ? Bike : user.role === 'admin' ? ShieldCheck : MapPin;
+  const DashboardRoleIcon = user.role === 'runner' ? Bike : isAdmin ? ShieldCheck : MapPin;
   const statusNames = statusNamesByLanguage[language] || statusNamesByLanguage.en;
   const deliveryStages = deliveryStagesByLanguage[language] || deliveryStagesByLanguage.en;
   const uiText = isBn ? {
@@ -460,27 +415,11 @@ export default function Home({ language = 'en' }) {
       completed: 'সম্পন্ন কাজ',
       trust: 'বিশ্বাস স্কোর',
       limit: 'কাজের সীমা',
-    },
-    admin: {
-      title: 'ব্যবহারকারী পরিচালনা',
-      kicker: 'নিরাপদ কমিউনিটি',
-      empty: 'এখনও কোনো ব্যবহারকারী নিবন্ধন করেননি।',
-      runner: 'রানার',
-      admin: 'অ্যাডমিন',
-      customer: 'গ্রাহক',
-      active: 'সক্রিয়',
-      inactive: 'নিষ্ক্রিয়',
-      disable: 'নিষ্ক্রিয় করুন',
-      enable: 'সক্রিয় করুন',
+      earnings: 'আজকের আয়',
     },
     panels: {
       weekly: 'সাপ্তাহিক চিত্র',
       progress: 'কাজের অগ্রগতি',
-      local: 'স্থানীয় নেটওয়ার্ক',
-      map: 'কাছাকাছি কাজের মানচিত্র',
-      find: 'আমার অবস্থান',
-      findAgain: 'আবার খুঁজুন',
-      searching: 'খুঁজছি...',
       newTaskKicker: 'কয়েক মিনিটেই তৈরি',
       newTaskTitle: 'নতুন কাজ পোস্ট করুন',
       taskTitle: 'কাজের শিরোনাম',
@@ -489,24 +428,7 @@ export default function Home({ language = 'en' }) {
       locationHelp: 'আপনার সঠিক স্থান রানারের কাছে কাজটি পৌঁছাতে সাহায্য করবে।',
       post: 'কাজ পোস্ট করুন',
       posting: 'পোস্ট হচ্ছে...',
-      nearbyKicker: 'আপনার রুটে',
-      nearbyTitle: 'আমার ও কাছের কাজ',
-      allTasks: 'আপনার কাজগুলো',
-      allTitle: 'আমার কাজ',
-      adminTasks: 'সাম্প্রতিক কাজ',
-      refresh: '↻ হালনাগাদ',
-      refreshLoading: 'লোড হচ্ছে...',
       openIssues: 'টি খোলা সমস্যা—নিচের কাজগুলো পর্যালোচনা করুন।',
-      shareLocation: 'আপনার কাছের কাজ দেখতে অবস্থান দিন',
-      shareLocationText: 'আপনার তথ্য শেয়ার করা হবে না; শুধু কাছের খোলা কাজ খুঁজতেই এটি ব্যবহার হয়।',
-      showNearby: 'আমার কাছের কাজ দেখান',
-      noNearby: 'এখনও কোনো কাজ মেলেনি',
-      noNearbyText: 'নতুন কাজ এলে আবার খুঁজুন। আপনার কাজের সীমা ৳{limit} পর্যন্ত।',
-      noTask: 'এখনও কোনো কাজ পোস্ট করেননি',
-      noTaskAdmin: 'এখনও কোনো কাজ নেই',
-      noTaskText: 'উপরে ফর্মটি পূরণ করে আপনার প্রথম কাজটি পোস্ট করুন।',
-      noTaskAdminText: 'কমিউনিটিতে কাজ শুরু হলে এখানে দেখা যাবে।',
-      safety: 'প্রতিটি পিকআপ ও ডেলিভারি OTP দিয়ে নিশ্চিত হয়। কখনো NID চাওয়া হবে না।',
     },
   } : {
     header: {
@@ -530,27 +452,11 @@ export default function Home({ language = 'en' }) {
       completed: 'Completed',
       trust: 'Trust score',
       limit: 'Task limit',
-    },
-    admin: {
-      title: 'Manage users',
-      kicker: 'Safe community',
-      empty: 'No users have registered yet.',
-      runner: 'Runner',
-      admin: 'Admin',
-      customer: 'Customer',
-      active: 'Active',
-      inactive: 'Inactive',
-      disable: 'Disable',
-      enable: 'Enable',
+      earnings: "Today's earnings",
     },
     panels: {
       weekly: 'Weekly view',
       progress: 'Task progress',
-      local: 'Local network',
-      map: 'Nearby jobs map',
-      find: 'My location',
-      findAgain: 'Find again',
-      searching: 'Finding...',
       newTaskKicker: 'Ready in minutes',
       newTaskTitle: 'Post a new task',
       taskTitle: 'Task title',
@@ -559,24 +465,7 @@ export default function Home({ language = 'en' }) {
       locationHelp: 'Your exact location helps the runner reach the task quickly.',
       post: 'Post task',
       posting: 'Posting...',
-      nearbyKicker: 'Your route',
-      nearbyTitle: 'My and nearby jobs',
-      allTasks: 'Your tasks',
-      allTitle: 'My tasks',
-      adminTasks: 'Recent tasks',
-      refresh: '↻ Refresh',
-      refreshLoading: 'Loading...',
       openIssues: 'open issues—review the task list below.',
-      shareLocation: 'Share your location to find nearby jobs',
-      shareLocationText: 'Your info will not be shared; this is only used to find nearby active jobs.',
-      showNearby: 'Show nearby jobs',
-      noNearby: 'No jobs found yet',
-      noNearbyText: 'New jobs will appear here when available. Your task limit is ৳{limit}.',
-      noTask: 'You have not posted a task yet',
-      noTaskAdmin: 'No jobs available yet',
-      noTaskText: 'Fill the form above to post your first job.',
-      noTaskAdminText: 'Once work starts in the community, it will appear here.',
-      safety: 'Every pickup and delivery is confirmed with OTP. NID is never required.',
     },
   };
   const taskCardCopy = isBn ? {
@@ -613,27 +502,17 @@ export default function Home({ language = 'en' }) {
     minutes: 'মিনিট',
     sendOffer: 'প্রস্তাব দিন',
     sending: 'পাঠানো হচ্ছে...',
-    viewOffers: 'রানারদের প্রস্তাব দেখুন',
-    hideOffers: 'প্রস্তাব লুকান',
-    noOffers: 'এখনও কোনো প্রস্তাব আসেনি।',
     chat: 'চ্যাট',
     chatReadOnly: 'চ্যাট দেখুন',
-    trustScore: 'বিশ্বাস স্কোর',
-    minutesShort: 'মিনিট',
-    selected: 'নির্বাচিত',
-    rejected: 'প্রত্যাখ্যাত',
-    accept: 'গ্রহণ',
     cancelTask: 'কাজ বাতিল',
     deleteTask: 'পোস্ট মুছুন',
     deleting: 'মুছছে...',
     reportIssue: 'সমস্যা জানান',
     mapHint: 'পিকআপ ও ডেলিভারি স্থান মানচিত্রে দেখানো হয়েছে।',
     confirmDelete: 'এই কাজের পোস্টটি স্থায়ীভাবে মুছে ফেলবেন?',
-    requireLocation: 'কাজ নিতে আগে আপনার অবস্থান শেয়ার করুন',
     cancelReason: 'ব্যবহারকারীর অনুরোধে বাতিল',
     disputePrompt: 'সমস্যার বিস্তারিত লিখুন (অন্তত ১০ অক্ষর)',
     deleteSuccess: 'আপনার কাজের পোস্টটি মুছে ফেলা হয়েছে।',
-    requireLocationBid: 'প্রস্তাব দিতে আগে আপনার অবস্থান শেয়ার করুন',
     bidSent: 'আপনার প্রস্তাবটি পাঠানো হয়েছে।',
     resolutionPrompt: 'সমাধানের বিবরণ লিখুন',
     faultPrompt: 'দায় কার? রানার হলে ১, গ্রাহক হলে ২, কেউ নয় হলে ০ লিখুন',
@@ -679,27 +558,17 @@ export default function Home({ language = 'en' }) {
     minutes: 'Minutes',
     sendOffer: 'Send offer',
     sending: 'Sending...',
-    viewOffers: 'View runner offers',
-    hideOffers: 'Hide offers',
-    noOffers: 'No offers yet.',
     chat: 'Chat',
     chatReadOnly: 'View chat',
-    trustScore: 'Trust score',
-    minutesShort: 'mins',
-    selected: 'Selected',
-    rejected: 'Rejected',
-    accept: 'Accept',
     cancelTask: 'Cancel task',
     deleteTask: 'Delete post',
     deleting: 'Deleting...',
     reportIssue: 'Report issue',
     mapHint: 'Pickup and delivery locations are shown on the map.',
     confirmDelete: 'Delete this task permanently?',
-    requireLocation: 'Share your location before accepting a task',
     cancelReason: 'Cancelled at customer request',
     disputePrompt: 'Describe the issue (at least 10 characters)',
     deleteSuccess: 'Your task post was deleted.',
-    requireLocationBid: 'Share your location before submitting a bid',
     bidSent: 'Your offer was sent successfully.',
     resolutionPrompt: 'Describe the resolution',
     faultPrompt: 'Who is at fault? Enter 1 for runner, 2 for customer, or 0 for none',
@@ -712,9 +581,11 @@ export default function Home({ language = 'en' }) {
     editTask: 'Edit',
     deleteForever: 'Delete forever',
   };
+
   const [dashboard, setDashboard] = useState({ stats: {}, activity: [], recentTasks: [] });
   const [tasks, setTasks] = useState([]);
-  const [nearbyTasks, setNearbyTasks] = useState([]);
+  const groupedTasks = useMemo(() => groupTasks(tasks), [tasks]);
+  const [, setNearbyTasks] = useState([]);
   const [marketSearch, setMarketSearch] = useState('');
   const [marketLocation, setMarketLocation] = useState('');
   const [runnerPosition, setRunnerPosition] = useState(null);
@@ -728,6 +599,7 @@ export default function Home({ language = 'en' }) {
   const [chatOpen, setChatOpen] = useState(false);
   const [reviewTask, setReviewTask] = useState(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [editTask, setEditTask] = useState(null);
   const [editForm, setEditForm] = useState({ title: '', description: '', estimatedPrice: '', pickupAddress: '', deliveryAddress: '', status: 'pending' });
   const [confirmAction, setConfirmAction] = useState(null);
@@ -736,26 +608,164 @@ export default function Home({ language = 'en' }) {
     pickupAddress: '', pickupPosition: null,
     deliveryAddress: '', deliveryPosition: null,
   });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsForm, setSettingsForm] = useState({ name: '', email: '', phone: '', area: '', currentPassword: '', newPassword: '', confirmNewPassword: '', avatarUrl: '' });
+  const [newAvatarFile, setNewAvatarFile] = useState(null);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [settingsNotice, setSettingsNotice] = useState('');
+  const [customerTab, setCustomerTab] = useState('all');
+  const [runnerTab, setRunnerTab] = useState('open');
+  const [runnerOtpInput, setRunnerOtpInput] = useState('');
+  const [otpConfirming, setOtpConfirming] = useState(false);
+  const [confirmingStatus, setConfirmingStatus] = useState(null);
+  const [acceptingBidId, setAcceptingBidId] = useState(null);
+
+  // Recent activity: last 4 events across recent tasks
+  const recentActivity = useMemo(() => {
+    if (user.role !== 'customer') return [];
+    const events = [];
+    const ordered = [...(dashboard.recentTasks || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    for (const task of ordered) {
+      events.push({ id: `posted-${task._id}`, time: task.createdAt, icon: 'task', text: task.title, status: task.status, runner: task.runnerId });
+      if (task.runnerId && task.status !== 'pending') {
+        events.push({ id: `accepted-${task._id}`, time: task.updatedAt || task.createdAt, icon: 'user', text: task.runnerId?.name || 'Runner', status: task.status, runner: task.runnerId });
+      }
+      if (task.status === 'completed') {
+        events.push({ id: `completed-${task._id}`, time: task.completedAt || task.createdAt, icon: 'check', text: task.title, status: task.status, runner: task.runnerId });
+      }
+    }
+    return events.slice(0, 4);
+  }, [dashboard.recentTasks, user.role]);
+
+  const updateSettings = async (event) => {
+    event.preventDefault();
+    setSettingsNotice('');
+    if (!settingsForm.currentPassword || !settingsForm.newPassword || !settingsForm.confirmNewPassword) {
+      setSettingsNotice(isBn ? 'সব খাতা পূরণ করুন।' : 'Fill in all fields.');
+      return;
+    }
+    if (settingsForm.newPassword !== settingsForm.confirmNewPassword) {
+      setSettingsNotice(isBn ? 'নতুন পাসওয়ার্ড মিলছে না।' : 'New passwords do not match.');
+      return;
+    }
+    if (settingsForm.newPassword.length < 8) {
+      setSettingsNotice(isBn ? 'পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।' : 'Password must be at least 8 characters.');
+      return;
+    }
+    setSettingsBusy(true);
+    try {
+      await api.updatePassword({ currentPassword: settingsForm.currentPassword, newPassword: settingsForm.newPassword });
+      setSettingsNotice(isBn ? 'পাসওয়ার্ড আপডেট করা হয়েছে।' : 'Password updated successfully.');
+      setSettingsForm((current) => ({ ...current, currentPassword: '', newPassword: '', confirmNewPassword: '' }));
+    } catch (error) {
+      setSettingsNotice(error.message || (isBn ? 'পাসওয়ার্ড আপডেটে সমস্যা।' : 'Could not update password.'));
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    setNotice('');
+    try {
+      await api.logout();
+      logout();
+      navigate('/login');
+    } catch (error) {
+      setNotice(error.message || (isBn ? 'লগআউটে সমস্যা।' : 'Could not log out.'));
+    }
+  };
+
+  const saveProfile = async () => {
+    setSettingsNotice('');
+    setSettingsBusy(true);
+    try {
+      const formData = new FormData();
+      formData.append('name', settingsForm.name);
+      formData.append('email', settingsForm.email);
+      formData.append('phone', settingsForm.phone);
+      formData.append('area', settingsForm.area);
+      if (newAvatarFile) formData.append('avatar', newAvatarFile);
+      await api.updateProfile(formData);
+      setSettingsNotice(isBn ? 'প্রোফাইল সংরক্ষণ করা হয়েছে।' : 'Profile saved successfully.');
+      await refreshUser();
+    } catch (error) {
+      setSettingsNotice(error.message || (isBn ? 'প্রোফাইল সংরক্ষণে সমস্যা।' : 'Could not save profile.'));
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  const togglePasswordVisibility = (field) => {
+    if (field === 'current') setShowCurrentPassword((prev) => !prev);
+    if (field === 'new') setShowNewPassword((prev) => !prev);
+    if (field === 'confirm') setShowConfirmPassword((prev) => !prev);
+  };
+
+  const openSettings = () => {
+    setSettingsForm({
+      name: user?.name || '',
+      email: user?.email || '',
+      phone: user?.phone || '',
+      area: user?.area || '',
+      avatarUrl: user?.avatarUrl || '',
+      currentPassword: '',
+      newPassword: '',
+      confirmNewPassword: '',
+    });
+    setNewAvatarFile(null);
+    setSettingsNotice('');
+    setSettingsOpen(true);
+  };
+
+  const handleAvatarChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setSettingsNotice(isBn ? 'শুধু JPG, PNG, বা WebP ছবি অনুমোদিত।' : 'Only JPG, PNG, or WebP images are allowed.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setSettingsNotice(isBn ? 'ছবি ২ মিবির চেয়ে ছোট হতে হবে।' : 'Image must be smaller than 2 MB.');
+      return;
+    }
+    setNewAvatarFile(file);
+    const previewUrl = URL.createObjectURL(file);
+    setSettingsForm({ ...settingsForm, avatarUrl: previewUrl });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
     setNotice('');
+    let errors = 0;
+    const errorMessages = [];
     try {
-      const [dashboardData, taskData, currentUser, userData] = await Promise.all([
-        api.dashboard(),
-        api.tasks(),
-        refreshUser(),
-        user.role === 'admin' ? api.adminUsers() : Promise.resolve({ users: [] }),
-      ]);
+      const dashboardData = await api.dashboard();
       setDashboard(dashboardData);
+    } catch (e) { errors++; errorMessages.push('Dashboard: ' + e.message); console.error('Dashboard load failed:', e.message); }
+    try {
+      const taskData = await api.tasks();
       setTasks(taskData.tasks);
-      setAdminUsers(userData.users);
-    } catch (error) {
-      setNotice(error.message);
-    } finally {
-      setLoading(false);
+    } catch (e) { errors++; errorMessages.push('Tasks: ' + e.message); console.error('Tasks load failed:', e.message); }
+    try {
+      await refreshUser();
+    } catch (e) { errors++; errorMessages.push('User: ' + e.message); console.error('User refresh failed:', e.message); }
+    if (userRef.current && ['admin', 'super_admin', 'sub_admin'].includes(userRef.current.role)) {
+      try {
+        const userData = await api.adminUsers();
+        setAdminUsers(userData.users);
+      } catch (e) {
+        setAdminUsers([]);
+        console.error('Admin users load failed:', e.message);
+      }
     }
-  }, [refreshUser, user.role]);
+    if (errors > 0) {
+      setNotice(errorMessages.join(' | ') + '. Click Refresh to retry.');
+    }
+    setLoading(false);
+  }, [refreshUser]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -770,17 +780,66 @@ export default function Home({ language = 'en' }) {
   }, [tasks, user.role]);
 
   useEffect(() => {
-    if (user.role !== 'customer') return undefined;
     const intervalId = window.setInterval(async () => {
       try {
-        const result = await api.tasks();
-        setTasks(result.tasks);
+        const [dashboardData, taskData] = await Promise.all([
+          api.dashboard(),
+          api.tasks(),
+        ]);
+        setDashboard(dashboardData);
+        setTasks(taskData.tasks);
       } catch (error) {
         setNotice(error.message);
       }
     }, 15000);
     return () => window.clearInterval(intervalId);
-  }, [user.role]);
+  }, []);
+
+  // Deduplicate tasks by id (in case same task comes from multiple sources)
+  const uniqueTasks = Array.from(new Map(tasks.map((t) => [t._id, t])).values());
+
+  // Status-based filtered arrays (single source of truth)
+  const activeTasks = uniqueTasks.filter((t) => ACTIVE_STATUSES.includes(t.status));
+  const completedTasks = uniqueTasks.filter((t) => DONE_STATUSES.includes(t.status));
+  const openJobs = uniqueTasks.filter((t) => t.status === 'pending' && !t.runnerId);
+
+  // Auto-select the most recent active task for customers and runners
+  useEffect(() => {
+    if (user.role === 'customer') {
+      const nonCompleted = activeTasks.filter((t) => !['completed', 'cancelled', 'deleted'].includes(t.status));
+      if (nonCompleted.length > 0 && !selectedTaskId) {
+        setSelectedTaskId(nonCompleted[0]._id);
+      }
+    }
+    if (user.role === 'runner') {
+      const runnerTasks = activeTasks.filter((t) => String(t.runnerId?._id || t.runnerId) === String(user.id));
+      if (runnerTasks.length > 0 && !selectedTaskId) {
+        setSelectedTaskId(runnerTasks[0]._id);
+      }
+    }
+  }, [activeTasks, selectedTaskId, user.role]);
+
+  // Load runner offers for the selected pending task immediately, then every 10 seconds
+  useEffect(() => {
+    if (user.role !== 'customer' || !selectedTaskId) return undefined;
+    const task = tasks.find((t) => String(t._id) === String(selectedTaskId));
+    if (!task || task.status !== 'pending') return undefined;
+    let active = true;
+    const fetchBids = async () => {
+      try {
+        const result = await api.bids(selectedTaskId);
+        if (active) setBids((current) => ({ ...current, [selectedTaskId]: result.bids }));
+      } catch (error) {
+        // ignore bid polling errors
+      }
+    };
+    fetchBids();
+    const intervalId = window.setInterval(fetchBids, 10000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [selectedTaskId, tasks, user.role]);
 
   const refreshNearby = useCallback(async (position = runnerPosition) => {
     if (!position || user.role !== 'runner') return;
@@ -809,37 +868,38 @@ export default function Home({ language = 'en' }) {
     }, () => {
       setRunnerPosition(dhaka);
       refreshNearby(dhaka);
-      setNotice(isBn ? 'অবস্থান অনুমতি না পাওয়ায় ঢাকার অবস্থান ব্যবহৃত হচ্ছে।' : 'Using Dhaka location as default.');
+      setNotice(isBn ? 'অবস্থান অনুমতি না পাওয়ায় ঢাকার অবস্থান ব্যবহৃত হচ্ছে।' : 'Using Dhaka location as default.');
       setLocationLoading(false);
     }, { enableHighAccuracy: true, timeout: 8000 });
   };
 
-  const currentCenter = useMemo(() => runnerPosition || dhaka, [runnerPosition]);
-  const filteredTasks = useMemo(() => {
-    if (user.role !== 'runner') return tasks;
-    const keyword = marketSearch.trim().toLowerCase();
-    const location = marketLocation.trim().toLowerCase();
-    return tasks.filter((task) => {
-      const haystack = [
-        task.title,
-        task.description,
-        task.pickupAddress,
-        task.deliveryAddress,
-        task.customerId?.name,
-      ].filter(Boolean).join(' ').toLowerCase();
-
-      const matchesKeyword = !keyword || haystack.includes(keyword);
-      const matchesLocation = !location || [task.pickupAddress, task.deliveryAddress, task.customerId?.name].some((value) => String(value || '').toLowerCase().includes(location));
-      return matchesKeyword && matchesLocation;
-    });
-  }, [tasks, user.role, marketSearch, marketLocation]);
-
-  const visibleTasks = user.role === 'runner'
-    ? filteredTasks
-    : tasks;
+  const visibleTasks = useMemo(() => {
+    const list = tasks || [];
+    if (user.role === 'runner') {
+      const keyword = marketSearch.trim().toLowerCase();
+      const location = marketLocation.trim().toLowerCase();
+      return list.filter((task) => {
+        // Open jobs only: pending status with no assigned runner
+        if (task.status !== 'pending' || task.runnerId) return false;
+        const haystack = [
+          task.title,
+          task.description,
+          task.pickupAddress,
+          task.deliveryAddress,
+          task.customerId?.name,
+        ].filter(Boolean).join(' ').toLowerCase();
+        const matchesKeyword = !keyword || haystack.includes(keyword);
+        const matchesLocation = !location || [task.pickupAddress, task.deliveryAddress, task.customerId?.name].some((value) => String(value || '').toLowerCase().includes(location));
+        return matchesKeyword && matchesLocation;
+      });
+    }
+    if (user.role === 'customer' && customerTab !== 'all') {
+      return list.filter((task) => task.status === customerTab);
+    }
+    return list;
+  }, [tasks, user.role, marketSearch, marketLocation, customerTab]);
 
   useEffect(() => {
-    if (!focusTaskId || loading) return undefined;
     const taskCard = document.getElementById(`task-card-${focusTaskId}`);
     if (!taskCard) return undefined;
     taskCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -857,11 +917,35 @@ export default function Home({ language = 'en' }) {
     if (user.role === 'runner') await refreshNearby();
   };
 
-  function toggleTaskSelect(taskId) {
-    setSelectedTaskIds((current) => current.includes(taskId) ? current.filter((id) => id !== taskId) : [...current, taskId]);
-  }
+  const actCancel = async (task) => {
+    setLoading(true);
+    try {
+      await api.cancelTask(task._id, isBn ? 'কাজ বাতিল করা হয়েছে' : 'Cancelled at customer request');
+      setLoading(false);
+      await load();
+    } catch (error) {
+      setLoading(false);
+      setNotice(error.message || 'Could not cancel task.');
+    }
+  };
 
-  function openEditTask(task) {
+  const actDispute = async (task) => {
+    const resolution = window.prompt(isBn ? 'সমস্যাটি লিখুন' : 'Describe the issue');
+    if (!resolution) return;
+    try {
+      await api.reportDispute(task._id, resolution);
+      await load();
+    } catch (error) {
+      setNotice(error.message || 'Could not report issue.');
+    }
+  };
+
+  const toggleTaskSelect = (id) =>
+    setSelectedTaskIds((current) =>
+      current.includes(id) ? current.filter((x) => x !== id) : [...current, id]
+    );
+
+  const openEditTask = (task) => {
     setEditTask(task);
     setEditForm({
       title: task.title || '',
@@ -869,41 +953,75 @@ export default function Home({ language = 'en' }) {
       estimatedPrice: task.estimatedPrice || '',
       pickupAddress: task.pickupAddress || '',
       deliveryAddress: task.deliveryAddress || '',
-      status: task.status,
+      status: task.status || 'pending',
     });
-  }
+  };
 
-  async function saveEditTask(event) {
+  const saveEditTask = async (event) => {
     event.preventDefault();
     if (!editTask) return;
-    if (!window.confirm(isBn ? 'এই কাজের পরিবর্তন সংরক্ষণ করবেন?' : 'Save these task changes?')) return;
     try {
-      await api.adminUpdateTask(editTask._id, {
-        title: editForm.title,
-        description: editForm.description,
-        estimatedPrice: Number(editForm.estimatedPrice),
-        pickupAddress: editForm.pickupAddress,
-        deliveryAddress: editForm.deliveryAddress,
-        status: editForm.status,
-      });
+      await api.adminUpdateTask(editTask._id, { ...editForm, estimatedPrice: Number(editForm.estimatedPrice) });
       setEditTask(null);
-      setNotice(isBn ? 'কাজটি আপডেট হয়েছে।' : 'Task updated.');
       await load();
     } catch (error) {
-      setNotice(error.message);
+      setNotice(error.message || 'Could not update task.');
     }
-  }
+  };
 
-  async function submitTask(event) {
+  const chooseBid = async (bidId) => {
+    if (!selectedTaskId) return;
+    try {
+      setAcceptingBidId(bidId);
+      await api.acceptBid(selectedTaskId, bidId);
+      await load();
+    } catch (error) {
+      setNotice(error.message || 'Could not accept bid.');
+    } finally {
+      setAcceptingBidId(null);
+    }
+  };
+
+  const confirmRunnerOtp = async (taskId, otpType) => {
+    if (otpConfirming) return;
+    try {
+      setOtpConfirming(true);
+      if (otpType === 'pickup') {
+        await api.verifyPickup(taskId, runnerOtpInput);
+      } else {
+        await api.verifyDelivery(taskId, runnerOtpInput);
+      }
+      setRunnerOtpInput('');
+      setOtpConfirming(false);
+      await load();
+    } catch (error) {
+      setOtpConfirming(false);
+      setNotice(error.message || 'OTP verification failed.');
+    }
+  };
+
+  const updateRunnerStatus = async (taskId, newStatus) => {
+    if (confirmingStatus) return;
+    try {
+      setConfirmingStatus(newStatus);
+      await api.updateDeliveryStatus(taskId, newStatus);
+      await load();
+    } catch (error) {
+      setConfirmingStatus(null);
+      setNotice(error.message || 'Status update failed.');
+    }
+  };
+
+  const submitTask = async (event) => {
     event.preventDefault();
     if (!form.pickupPosition || !form.deliveryPosition) {
-      setNotice('কাজ পোস্ট করার আগে পিকআপ ও ডেলিভারির স্থান মানচিত্রে বাছাই করুন।');
+      setNotice(isBn ? 'কাজ পোস্ট করার আগে পিকআপ ও ডেলিভারির স্থান মানচিত্রে বাছাই করুন।' : 'Please select pickup and delivery locations on the map before posting.');
       return;
     }
     setSubmitting(true);
     setNotice('');
     try {
-      await api.createTask({
+      const created = await api.createTask({
         title: form.title,
         description: form.description,
         estimatedPrice: Number(form.estimatedPrice),
@@ -923,155 +1041,712 @@ export default function Home({ language = 'en' }) {
         pickupAddress: '', pickupPosition: null,
         deliveryAddress: '', deliveryPosition: null,
       });
-      setNotice('আপনার কাজটি পোস্ট হয়েছে। কাছের রানাররা এখন এটি দেখতে পারবেন।');
+      setNotice(isBn ? 'আপনার কাজটি পোস্ট হয়েছে। কাছের রানাররা এখন এটি দেখতে পারবেন।' : 'Your task has been posted. Nearby runners can now see it.');
       await load();
+      // Auto-select the newly created task in Active task panel
+      if (created && created._id) {
+        setSelectedTaskId(created._id);
+      }
     } catch (error) {
       setNotice(error.message);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const scrollToPostForm = () => {
+    const el = document.getElementById('post-task-form');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Render the active task panel for the selected customer task
+  function renderActiveTaskPanel(taskId) {
+    const task = tasks.find((t) => String(t._id) === String(taskId));
+    if (!task) return null;
+    const bidList = bids[task._id] || [];
+    const status = task.status;
+    const isCustomer = user.role === 'customer';
+    const isRunner = user.role === 'runner';
+
+    const statusOrder = ['pending', 'accepted', 'picked-up', 'in-transit', 'arriving', 'completed'];
+    const stageIndex = statusOrder.indexOf(status);
+    const stepLabels = {
+      posted: { en: 'Posted', bn: 'পোস্ট করা হয়েছে' },
+      accepted: { en: 'Assigned', bn: 'রানার পাওয়া গেছে' },
+      'picked-up': { en: 'Picked up', bn: 'পিকআপ সফল' },
+      'in-transit': { en: 'Departed', bn: 'রওনা হয়েছে' },
+      arriving: { en: 'Nearby', bn: 'কাছাকাছি' },
+      completed: { en: 'Delivered', bn: 'ডেলিভারি সম্পন্ন' },
+    };
+    const stepHelper = {
+      pending: { en: 'Waiting for a runner to accept your task.', bn: 'কাজ রানার গ্রহণ করার অপেক্ষায়।' },
+      accepted: { en: 'Runner has accepted your task.', bn: 'রানার আপনার কাজ গ্রহণ করেছেন।' },
+      'picked-up': { en: 'Runner has picked up your parcel.', bn: 'রানার আপনার পার্সেল নেয়ায়।' },
+      'in-transit': { en: 'Runner is on the way to delivery.', bn: 'রানার ডেলিভারির পথে আছে।' },
+      arriving: { en: 'Runner is near the destination.', bn: 'রানার গন্তব্যের কাছাকাছি পৌঁছাচ্ছেন।' },
+      completed: { en: 'Task completed successfully.', bn: 'কাজ সফলভাবে সম্পন্ন হয়েছে।' },
+    };
+
+    const truncatedAddress = (addr) => {
+      if (!addr) return isBn ? 'ঠিকানা নেই' : 'No address';
+      return addr.length > 38 ? addr.slice(0, 38) + '…' : addr;
+    };
+
+    const openInMaps = (addr) => {
+      if (!addr) return;
+      window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`, '_blank');
+    };
+
+    return (
+      <>
+        {/* Task switcher - only show if multiple active tasks */}
+        <div className="active-task-switcher">
+          <span className="switcher-label">{isBn ? 'কাজ বাছাই করুন' : 'Select task'}</span>
+          <div className="switcher-tabs">
+            {tasks
+              .filter((t) => !['completed', 'cancelled', 'deleted'].includes(t.status))
+              .map((t) => (
+                <button
+                  key={t._id}
+                  type="button"
+                  className={`switcher-tab ${selectedTaskId === String(t._id) ? 'switcher-tab-active' : ''}`}
+                  onClick={() => setSelectedTaskId(String(t._id))}
+                  aria-label={t.title}
+                >
+                  {t.title}
+                </button>
+              ))}
+          </div>
+        </div>
+
+        {/* Empty state */}
+        {!selectedTaskId && (
+          <div className="active-task-empty">
+            <span className="empty-icon">📭</span>
+            <h3>{isBn ? 'কাজ বেছে নিন' : 'No active task selected'}</h3>
+            <p>{isBn ? 'উপরের তালিকা থেকে একটি কাজ বেছে নিন।' : 'Select a task above to track it.'}</p>
+            {isCustomer && <button className="button button-primary" onClick={scrollToPostForm}>{isBn ? 'কাজ পোস্ট করুন' : 'Post a task'}</button>}
+          </div>
+        )}
+
+        {/* Active task content */}
+        {selectedTaskId && (
+          <>
+            {/* Header */}
+            <div className="active-task-header">
+              <div>
+                <h3 className="active-task-title">{task.title}</h3>
+                <span className={`badge badge-status status-${status}`}>{statusNames[status] || status}</span>
+              </div>
+              {isRunner && (
+                <button className="button button-outline button-small refresh-btn" onClick={() => load()} aria-label="Refresh">
+                  ↻
+                </button>
+              )}
+            </div>
+
+            {/* Budget */}
+            <div className="active-task-budget">
+              <span className="budget-label">{isBn ? 'বাজেট' : 'Budget'}</span>
+              <span className="budget-value">{money(task.finalPrice ?? task.estimatedPrice)}</span>
+            </div>
+
+            {/* Stage-specific content */}
+            {/* Stage 1: Pending - Customer offers */}
+            {isCustomer && status === 'pending' && (
+              <>
+                <div className="offers-section">
+                  <h4 className="offers-title">{isBn ? 'রানারদের প্রস্তাব' : 'Runner offers'}</h4>
+                  {bidList.length === 0 && (
+                    <div className="offers-empty">
+                      <div className="offers-pulse">●</div>
+                      <p>{isBn ? 'প্রস্তাবের অপেক্ষায়...' : 'Waiting for offers...'}</p>
+                    </div>
+                  )}
+                  {bidList.length > 0 && (
+                    <div className="offers-list">
+                      {bidList.filter((bid) => bid.status !== 'rejected').map((bid) => (
+                        <div key={bid._id} className="offer-item">
+                          <div className="offer-avatar">{bid.runnerId?.name?.slice(0, 1) || 'R'}</div>
+                          <div className="offer-info">
+                            <div className="offer-name">{bid.runnerId?.name || 'Runner'}</div>
+                            <div className="offer-rating"><span className="rating-star">★</span> {Number(bid.runnerId?.trustScore || 0).toFixed(1)}</div>
+                            <div className="offer-details">{bid.deliveryTime} {isBn ? 'মিনিট' : 'mins'}</div>
+                          </div>
+                          <div className="offer-price">{money(bid.proposedPrice)}</div>
+                            <div className="offer-actions">
+                                <button type="button" className="button button-outline button-small" onClick={() => chooseBid(bid._id)} disabled={acceptingBidId === bid._id}>{acceptingBidId === bid._id ? (isBn ? 'গ্রহণ হচ্ছে...' : 'Accepting...') : (isBn ? 'গ্রহণ' : 'Accept')}</button>
+                                <button type="button" className="button button-outline button-small" onClick={() => setBids((c) => ({ ...c, [task._id]: bidList.map((b) => (b._id === bid._id ? { ...b, status: 'rejected' } : b)) }))}>{isBn ? 'প্রত্যাখ্যান' : 'Decline'}</button>
+                              </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="stage-helper">{isBn ? stepHelper.pending.bn : stepHelper.pending.en}</div>
+              </>
+            )}
+
+            {/* Stage 2+: Has runner */}
+            {task.runnerId && (
+              <>
+                {/* Customer: runner card */}
+                {isCustomer && (
+                  <div className="runner-info-card">
+                    <div className="runner-avatar-wrap">
+                      {task.runnerId.avatarUrl ? (
+                        <img src={task.runnerId.avatarUrl} alt="Runner" className="runner-avatar-img" />
+                      ) : (
+                        <span className="runner-avatar-empty">{task.runnerId.name?.slice(0, 1).toUpperCase() || 'R'}</span>
+                      )}
+                    </div>
+                    <div className="runner-info-text">
+                      <span className="runner-name">{task.runnerId.name}</span>
+                      <span className="runner-rating"><span className="rating-star">★</span> {Number(task.runnerId.avgRating || 0).toFixed(1)}</span>
+                    </div>
+                    <div className="runner-actions">
+                      <button type="button" className="button button-outline button-small" onClick={() => { setChatTask(task); setChatOpen(true); }} aria-label="Chat">
+                        <span>💬</span> {isBn ? 'চ্যাট' : 'Chat'}
+                      </button>
+                      <button type="button" className="button button-outline button-small" onClick={() => { if (task.runnerId.phone) window.open(`tel:${task.runnerId.phone}`, '_blank'); }} aria-label="Call">
+                        <span>📞</span> {isBn ? 'কল' : 'Call'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {/* Runner: customer card */}
+                {isRunner && (
+                  <div className="customer-info-card">
+                    <div className="customer-avatar-wrap">
+                      {task.customerId?.avatarUrl ? (
+                        <img src={task.customerId.avatarUrl} alt="Customer" className="customer-avatar-img" />
+                      ) : (
+                        <span className="customer-avatar-empty">{task.customerId?.name?.slice(0, 1).toUpperCase() || 'C'}</span>
+                      )}
+                    </div>
+                    <div className="customer-info-text">
+                      <span className="customer-name">{task.customerId?.name || 'Customer'}</span>
+                      <span className="customer-role">{isBn ? 'গ্রাহক' : 'Customer'}</span>
+                    </div>
+                    <div className="customer-actions">
+                      <button type="button" className="button button-outline button-small" onClick={() => { setChatTask(task); setChatOpen(true); }} aria-label="Chat">
+                        <span>💬</span> {isBn ? 'চ্যাট' : 'Chat'}
+                      </button>
+                      <button type="button" className="button button-outline button-small" onClick={() => { if (task.customerId?.phone) window.open(`tel:${task.customerId.phone}`, '_blank'); }} aria-label="Call">
+                        <span>📞</span> {isBn ? 'কল' : 'Call'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Route timeline */}
+                <div className="route-timeline">
+                  <div className="route-row">
+                    <span className="route-dot route-start"></span>
+                    <div className="route-content">
+                      <span className="route-label">{isBn ? 'পিকআপ' : 'Pickup'}</span>
+                      <div className="route-address" onClick={() => openInMaps(task.pickupAddress)} onMouseEnter={(e) => { e.currentTarget.title = task.pickupAddress || ''; }} onMouseLeave={(e) => { e.currentTarget.title = ''; }}>
+                        {task.pickupAddress || (isBn ? 'ঠিকানা দেওয়া হয়নি' : 'Address not provided')}
+                      </div>
+                    </div>
+                    <span className="route-line"></span>
+                  </div>
+                  <div className="route-row">
+                    <span className="route-dot route-end"></span>
+                    <div className="route-content">
+                      <span className="route-label">{isBn ? 'ডেলিভারি' : 'Delivery'}</span>
+                      <div className="route-address" onClick={() => openInMaps(task.deliveryAddress)} onMouseEnter={(e) => { e.currentTarget.title = task.deliveryAddress || ''; }} onMouseLeave={(e) => { e.currentTarget.title = ''; }}>
+                        {task.deliveryAddress || (isBn ? 'ঠিকানা দেওয়া হয়নি' : 'Address not provided')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status stepper */}
+                {status !== 'pending' && (
+                  <div className="stepper-section">
+                    <ol className="step-tracker">
+                      {[statusOrder[1], 'picked-up', 'in-transit', 'arriving', 'completed'].map((key, idx) => {
+                        const complete = stageIndex >= idx + 1;
+                        const current = stageIndex === idx + 1;
+                        return (
+                          <li key={key} className={`step-item ${complete ? 'step-complete' : ''} ${current ? 'step-current' : ''}`}>
+                            <span className="step-marker">{current ? '●' : complete ? '✓' : idx + 2}</span>
+                            <span className="step-label">{stepLabels[key][isBn ? 'bn' : 'en']}</span>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    <div className="stage-helper">{isBn ? stepHelper[status].bn : stepHelper[status].en}</div>
+                  </div>
+                )}
+
+                {/* OTP section - Customer only */}
+                {isCustomer && task.runnerId && status !== 'completed' && (
+                  <div className="otp-section">
+                    {status === 'accepted' && task.pickupOTP && (
+                      <>
+                        <div className="otp-row">
+                          <span className="otp-label">{isBn ? 'পিকআপ OTP' : 'Pickup OTP'}</span>
+                          <div className="otp-boxes">
+                            {String(task.pickupOTP).split('').map((digit, i) => (
+                              <span key={i} className="otp-box">{digit}</span>
+                            ))}
+                          </div>
+                          <button type="button" className="button button-outline button-small otp-copy" onClick={() => {
+                            navigator.clipboard.writeText(String(task.pickupOTP));
+                            setNotice(isBn ? 'পিকআপ OTP কপি করা হয়েছে' : 'Pickup OTP copied');
+                          }} aria-label="Copy OTP">
+                            📋
+                          </button>
+                        </div>
+                        <p className="otp-hint">{isBn ? 'শুধু পিকআপের সময় রানারকে এই OTP দিন।' : 'Share this OTP with the runner only at pickup.'}</p>
+                      </>
+                    )}
+                    {status !== 'pending' && status !== 'completed' && task.deliveryOTP && (
+                      <>
+                        <div className="otp-row">
+                          <span className="otp-label">{isBn ? 'ডেলিভারি OTP' : 'Delivery OTP'}</span>
+                          <div className="otp-boxes">
+                            {String(task.deliveryOTP).split('').map((digit, i) => (
+                              <span key={i} className="otp-box">{digit}</span>
+                            ))}
+                          </div>
+                          <button type="button" className="button button-outline button-small otp-copy" onClick={() => {
+                            navigator.clipboard.writeText(String(task.deliveryOTP));
+                            setNotice(isBn ? 'ডেলিভারি OTP কপি করা হয়েছে' : 'Delivery OTP copied');
+                          }} aria-label="Copy OTP">
+                            📋
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Runner OTP input */}
+                {isRunner && task.runnerId === undefined && false && null}
+                {isRunner && (
+                  <>
+                    {status === 'accepted' && (
+                      <div className="runner-otp-input">
+                        <label className="otp-input-label">{isBn ? 'পিকআপ OTP確認' : 'Confirm Pickup OTP'}</label>
+                        <input
+                          type="text"
+                          maxLength="4"
+                          inputMode="numeric"
+                          value={runnerOtpInput}
+                          onChange={(e) => setRunnerOtpInput(e.target.value.replace(/\D/g, ''))}
+                          placeholder="____"
+                          className="otp-input"
+                          disabled={otpConfirming}
+                        />
+                        <button
+                          type="button"
+                          className={`button button-primary button-small ${otpConfirming ? 'otp-confirming' : ''}`}
+                          onClick={() => confirmRunnerOtp(task._id, 'pickup')}
+                          disabled={otpConfirming || runnerOtpInput.length !== 4}
+                          aria-label="Confirm pickup OTP"
+                        >
+                          {otpConfirming ? (isBn ? 'যাচাই হচ্ছে...' : 'Verifying...') : (isBn ? 'নিশ্চিত করুন' : 'Confirm')}
+                        </button>
+                      </div>
+                    )}
+                    {status === 'picked-up' && (
+                      <button
+                        type="button"
+                        className={`button button-primary ${confirmingStatus === 'in-transit' ? 'status-confirming' : ''}`}
+                        onClick={() => updateRunnerStatus(task._id, 'in-transit')}
+                        disabled={confirmingStatus === 'in-transit'}
+                        aria-label="Mark departed"
+                      >
+                        {confirmingStatus === 'in-transit' ? (isBn ? 'হচ্ছে...' : 'Updating...') : (isBn ? 'রওনা করুন' : 'Mark departed')}
+                      </button>
+                    )}
+                    {status === 'in-transit' && (
+                      <button
+                        type="button"
+                        className={`button button-primary ${confirmingStatus === 'arriving' ? 'status-confirming' : ''}`}
+                        onClick={() => updateRunnerStatus(task._id, 'arriving')}
+                        disabled={confirmingStatus === 'arriving'}
+                        aria-label="Mark nearby"
+                      >
+                        {confirmingStatus === 'arriving' ? (isBn ? 'হচ্ছে...' : 'Updating...') : (isBn ? 'কাছাকাছি পৌঁছানো' : 'Mark nearby')}
+                      </button>
+                    )}
+                    {status === 'arriving' && (
+                      <div className="runner-otp-input">
+                        <label className="otp-input-label">{isBn ? 'ডেলিভারি OTP' : 'Confirm Delivery OTP'}</label>
+                        <input
+                          type="text"
+                          maxLength="4"
+                          inputMode="numeric"
+                          value={runnerOtpInput}
+                          onChange={(e) => setRunnerOtpInput(e.target.value.replace(/\D/g, ''))}
+                          placeholder="____"
+                          className="otp-input"
+                          disabled={otpConfirming}
+                        />
+                        <button
+                          type="button"
+                          className={`button button-primary ${otpConfirming ? 'otp-confirming' : ''}`}
+                          onClick={() => confirmRunnerOtp(task._id, 'delivery')}
+                          disabled={otpConfirming || runnerOtpInput.length !== 4}
+                          aria-label="Confirm delivery OTP"
+                        >
+                          {otpConfirming ? (isBn ? 'যাচাই হচ্ছে...' : 'Verifying...') : (isBn ? 'নিশ্চিত করুন' : 'Confirm delivery')}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Actions */}
+            <div className="active-task-actions">
+              {['pending', 'accepted'].includes(status) && (
+                <button
+                  type="button"
+                  className="button button-outline button-small text-danger cancel-btn"
+                  onClick={() => actCancel(task)}
+                  aria-label="Cancel task"
+                >
+                  {isBn ? 'কাজ বাতিল' : 'Cancel task'}
+                </button>
+              )}
+              <button type="button" className="button button-outline button-small report-btn" onClick={() => actDispute(task)} aria-label="Report issue">
+                {isBn ? 'সমস্যা জানান' : 'Report issue'}
+              </button>
+            </div>
+          </>
+        )}
+      </>
+    );
   }
 
   return (
     <div className="dashboard-page page-width">
-      <section className={`dashboard-welcome ${user.role === 'admin' ? 'dashboard-welcome-admin' : ''}`}>
-        <div className="dashboard-welcome-copy">
-          <div className={`eyebrow dashboard-role-eyebrow role-${user.role}`}>
-            <span className="dashboard-role-icon"><DashboardRoleIcon size={14} strokeWidth={2.4} /></span>
-            <span className="dashboard-role-label">{user.role === 'runner' ? uiText.header.runner : user.role === 'admin' ? uiText.header.admin : uiText.header.customer}</span>
-          </div>
-          <h1>{user.role === 'runner' ? uiText.header.runnerTitle(user.name.split(' ')[0]) : user.role === 'admin' ? uiText.header.adminTitle : uiText.header.customerTitle(user.name.split(' ')[0])}</h1>
-          <p>{user.role === 'runner' ? uiText.header.runnerText : user.role === 'admin' ? uiText.header.adminText : uiText.header.customerText}</p>
-          <div className="profile-chip">
-            {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.name} className="profile-avatar-img" />
-            ) : (
-              <span className="profile-avatar">{user.name.slice(0, 1).toUpperCase()}</span>
+      {isAdmin && <AdminControlPanel language={language} setLanguage={setLanguage} user={user} users={adminUsers} tasks={tasks} onNotice={setNotice} onUsersChange={load} />}
+      {!isAdmin && (
+        <>
+          <section className="dashboard-welcome">
+            <div className="dashboard-welcome-copy">
+              <div className="dashboard-welcome-topline" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                <div className={`eyebrow dashboard-role-eyebrow role-${user.role}`}>
+                  <span className="dashboard-role-icon"><DashboardRoleIcon size={14} strokeWidth={2.4} /></span>
+                  <span className="dashboard-role-label">{user.role === 'runner' ? uiText.header.runner : uiText.header.customer}</span>
+                </div>
+                <button type="button" className="language-switch" onClick={() => setLanguage?.((current) => (current === 'en' ? 'bn' : 'en'))} aria-label="Toggle language" title={language === 'en' ? 'বাংলা' : 'English'}>
+                  <Globe2 size={15} />
+                  <span>{language === 'en' ? 'EN / বাংলা' : 'বাংলা / EN'}</span>
+                </button>
+                <Link to="/" className="dashboard-home-btn" title={isBn ? 'হোম পেজে যান' : 'Go to home page'} aria-label={isBn ? 'হোম পেজে যান' : 'Go to home page'}>
+                  <HomeIcon size={14} />
+                  <span>{isBn ? 'হোম' : 'Home'}</span>
+                </Link>
+                <button type="button" className="button button-outline button-small dashboard-settings-btn" onClick={openSettings} aria-label={isBn ? 'সেটিংস' : 'Settings'} title={isBn ? 'সেটিংস' : 'Settings'}>
+                  <Settings size={14} />
+                  <span>{isBn ? 'সেটিংস' : 'Settings'}</span>
+                </button>
+                <button type="button" className="button button-outline button-small dashboard-logout-btn" onClick={handleLogout} aria-label={isBn ? 'লগআউট' : 'Logout'} title={isBn ? 'লগআউট' : 'Logout'}>{isBn ? 'লগআউট' : 'Logout'}</button>
+              </div>
+              <h1>{user.role === 'runner' ? uiText.header.runnerTitle(user.name.split(' ')[0]) : uiText.header.customerTitle(user.name.split(' ')[0])}</h1>
+              <p>{user.role === 'runner' ? uiText.header.runnerText : uiText.header.customerText}</p>
+              <div className="profile-chip">
+                {user.avatarUrl ? (
+                  <img src={user.avatarUrl} alt={user.name} className="profile-avatar-img" />
+                ) : (
+                  <span className="profile-avatar">{user.name.slice(0, 1).toUpperCase()}</span>
+                )}
+                <div>
+                  <b>{user.name}</b>
+                  <small>{user.role === 'runner' ? uiText.header.runnerRole : uiText.header.customerRole}</small>
+                  {user.area && <span className="profile-area-tag"> · 📍 {user.area}</span>}
+                </div>
+              </div>
+            </div>
+
+            <div className="dashboard-visual" aria-label="Local service workflow image">
+              <img
+                src="https://images.unsplash.com/photo-1521791055366-0d553872125f?auto=format&fit=crop&w=900&q=80"
+                alt="Runner delivering a parcel in a city neighborhood"
+              />
+              <div className="dashboard-visual-badge">
+                <span className="online-dot" />
+                <div>
+                  <strong>{isBn ? 'সক্রিয় লোকেশন' : 'Live nearby'}</strong>
+                  <small>{isBn ? '২৪ মিনিট আগে' : '24 mins ago'}</small>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="stats-grid dashboard-stats">
+            <StatCard icon="▣" label={uiText.stats.total} value={groupedTasks.all.length} language={language} />
+            <StatCard icon="◷" label={uiText.stats.pending} value={groupedTasks.pending.length} tone="stat-amber" language={language} />
+            <StatCard icon="⌁" label={uiText.stats.active} value={groupedTasks.active.length} tone="stat-blue" language={language} />
+            <StatCard icon="✓" label={uiText.stats.completed} value={groupedTasks.completed.length} tone="stat-green" language={language} />
+            {user.role === 'runner' && <StatCard icon="✦" label={uiText.stats.trust} value={user.trustScore || 0} tone="stat-green" language={language} />}
+            {user.role === 'runner' && <StatCard icon="৳" label={uiText.stats.limit} value={money(user.runnerLimit || 0)} tone="stat-blue" language={language} />}
+            {user.role === 'runner' && <StatCard icon="💰" label={uiText.stats.earnings} value={money(user.todayEarnings || 0)} tone="stat-green" language={language} />}
+          </section>
+
+          {notice && <div className={notice.includes('পোস্ট হয়েছে') || notice.includes('পাঠানো হয়েছে') || notice.includes('posted') || notice.includes('sent') ? 'notice notice-success' : 'notice'} role="status">{notice}<button onClick={() => setNotice('')} aria-label="Close message">×</button></div>}
+
+          <section className="dashboard-grid dashboard-grid-customer">
+            {/* Left column: Chart + Recent activity */}
+            <section className="panel-column-left">
+              <section className="panel activity-panel">
+                <div className="panel-heading"><div><span className="panel-kicker">{uiText.panels.weekly}</span><h2>{uiText.panels.progress}</h2></div><span className="panel-icon">↗</span></div>
+                <div className="chart-wrap">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={dashboard.activity || []} margin={{ top: 8, right: 12, left: -22, bottom: 0 }}>
+                      <CartesianGrid stroke="#38BDF8" vertical={false} strokeDasharray="3 5" opacity={0.3} />
+                      <XAxis dataKey="date" tickFormatter={(value) => new Date(`${value}T00:00:00`).toLocaleDateString(isBn ? 'bn-BD' : 'en-US', { day: 'numeric', month: 'short' })} tickLine={false} axisLine={false} tick={{ fill: '#38BDF8', fontSize: 11 }} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#38BDF8', fontSize: 11 }} />
+                      <Tooltip labelFormatter={(value) => new Date(`${value}T00:00:00`).toLocaleDateString(isBn ? 'bn-BD' : 'en-US')} formatter={(value) => [isBn ? `${value}টি` : `${value} tasks`, isBn ? 'কাজ' : 'Tasks']} />
+                      <Bar dataKey="count" fill="#38BDF8" radius={[6, 6, 0, 0]} maxBarSize={38} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </section>
+
+              <section className="panel recent-activity-panel">
+                <div className="panel-heading"><div><span className="panel-kicker">{isBn ? 'সাম্প্রতিক কার্যক্রম' : 'Recent activity'}</span><h2>{isBn ? 'কার্যক্রম ইতিহাস' : 'Recent activity'}</h2></div></div>
+                <div className="recent-activity-list">
+                  {recentActivity.length === 0 ? (
+                    <div className="admin-empty-state"><Package size={24} /><p>{isBn ? 'কোনো কার্যক্রম নেই।' : 'No recent activity.'}</p></div>
+                  ) : (
+                    recentActivity.map((event) => (
+                      <div key={event.id} className="recent-activity-item">
+                        <div className="activity-icon">{event.icon === 'task' ? '📋' : event.icon === 'user' ? '👤' : '✅'}</div>
+                        <div className="activity-info">
+                          <span className="activity-text">{event.text}</span>
+                          <span className="activity-time">{new Date(event.time).toLocaleDateString(isBn ? 'bn-BD' : 'en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+            </section>
+
+            {/* Right column: Active task panel */}
+              <section className="panel-column-right">
+              <section className="panel active-task-panel" id="active-task-panel">
+                <div className="panel-heading"><div><h2>{isBn ? 'সক্রিয় কাজ' : 'Active task'}</h2></div></div>
+
+                <div className="task-switcher">
+                  <span className="switcher-label">{isBn ? 'কাজ বাছাই করুন' : 'Select task'}</span>
+                  <select className="switcher-select" value={selectedTaskId || ''} onChange={(e) => setSelectedTaskId(e.target.value || null)}>
+                    <option value="">{isBn ? 'সব কাজ' : 'All tasks'}</option>
+                    {groupedTasks.active.map((t) => <option key={t._id} value={t._id}>{t.title}</option>)}
+                  </select>
+                </div>
+
+                {selectedTaskId ? (
+                  renderActiveTaskPanel(selectedTaskId)
+                ) : (
+                  <div className="active-task-empty">
+                    <span className="empty-icon">📭</span>
+                    <h3>{isBn ? 'কোনো সক্রিয় কাজ নেই' : 'No active task right now'}</h3>
+                    <p>{user.role === 'customer' ? (isBn ? 'কাজ পোস্ট করে শুরু করুন।' : 'Post a task to get started.') : (isBn ? 'খোলা কাজগুলো ব্রাউজ করুন।' : 'Browse open jobs.')}</p>
+                    {user.role === 'customer' && <button className="button button-primary" onClick={scrollToPostForm}>{isBn ? 'কাজ পোস্ট করুন' : 'Post a task'}</button>}
+                  </div>
+                )}
+              </section>
+            </section>
+          </section>
+
+          {user.role === 'customer' && <section className="panel create-task-panel" id="post-task-form">
+            <div className="panel-heading"><div><span className="panel-kicker">{uiText.panels.newTaskKicker}</span><h2>{uiText.panels.newTaskTitle}</h2></div><span className="panel-icon">＋</span></div>
+            <form onSubmit={submitTask} className="task-create-form">
+              <div className="form-row">
+                <label>{uiText.panels.taskTitle}<input required minLength="3" maxLength="120" placeholder={isBn ? 'যেমন: ফার্মেসি থেকে ওষুধ আনুন' : 'Example: Pick up medicine from the pharmacy'} value={form.title} onChange={(event) => updateForm('title', event.target.value)} /></label>
+                <label>{uiText.panels.estimate}<input required type="number" min="1" max="500000" step="1" placeholder={isBn ? '২৫০' : '250'} value={form.estimatedPrice} onChange={(event) => updateForm('estimatedPrice', event.target.value)} /></label>
+              </div>
+              <label>{uiText.panels.taskDescription}<textarea required minLength="5" maxLength="2000" rows="3" placeholder={isBn ? 'কোন ওষুধ বা জিনিস, কোনো বিশেষ নির্দেশনা থাকলে লিখুন...' : 'Add any medication, item, or special instructions...'} value={form.description} onChange={(event) => updateForm('description', event.target.value)} /></label>
+              <div className="location-form-grid">
+                <LocationFields prefix="pickup" label={isBn ? 'পিকআপের' : 'Pickup'} values={form} onChange={updateForm} selectedPosition={form.pickupPosition} onSelectPosition={(position) => updateForm('pickupPosition', position)} onNotice={setNotice} />
+                <LocationFields prefix="delivery" label={isBn ? 'ডেলিভারির' : 'Delivery'} values={form} onChange={updateForm} selectedPosition={form.deliveryPosition} onSelectPosition={(position) => updateForm('deliveryPosition', position)} onNotice={setNotice} />
+              </div>
+              <div className="form-submit-row"><span>{uiText.panels.locationHelp}</span><button className="button button-primary" disabled={submitting}>{submitting ? uiText.panels.posting : uiText.panels.post} <span aria-hidden="true">→</span></button></div>
+            </form>
+          </section>}
+
+          {user.role === 'runner' && <section className="runner-location-banner">
+            <span className="runner-banner-icon">⌖</span><div><b>{isBn ? 'আপনার কাছের কাজ দেখতে চান?' : 'Want to see jobs near you?'}</b><p>{isBn ? 'আপনার অবস্থান ব্যবহার করুন—শুধু ৫ কিমির মধ্যে এবং আপনার সীমার বাজেটের কাজ দেখানো হবে।' : 'Share your location to find jobs within 5 km and within your budget limit.'}</p></div>
+            <button className="button button-primary" onClick={locateRunner} disabled={locationLoading}>{locationLoading ? (isBn ? 'অবস্থান খুঁজছি...' : 'Finding location...') : runnerPosition ? (isBn ? 'কাজ খুঁজুন' : 'Find jobs') : (isBn ? 'অবস্থান শেয়ার করুন' : 'Share location')}</button>
+          </section>}
+
+          {settingsOpen && (
+            <div className="settings-modal-overlay" onClick={() => setSettingsOpen(false)}>
+              <div className="settings-modal" onClick={(event) => event.stopPropagation()}>
+                <div className="settings-modal-header">
+                  <span className="settings-modal-kicker">{isBn ? 'অ্যাকাউন্ট সেটিংস' : 'Account settings'}</span>
+                  <h2>{isBn ? 'প্রোফাইল ও নিরাপত্তা' : 'Profile & security'}</h2>
+                  <button type="button" className="settings-modal-close" onClick={() => setSettingsOpen(false)} aria-label={isBn ? 'বন্ধ করুন' : 'Close'}>×</button>
+                </div>
+                <div className="settings-modal-body">
+                  <div className="settings-split">
+                    <div className="settings-column settings-column-profile">
+                      <div className="settings-profile">
+                        <h3 className="settings-column-title">{isBn ? 'প্রোফাইল তথ্য' : 'Profile information'}</h3>
+                        <div className="settings-avatar-wrap">
+                          {settingsForm.avatarUrl || user.avatarUrl ? (
+                            <img className="settings-avatar" src={settingsForm.avatarUrl || user.avatarUrl} alt="Profile" />
+                          ) : (
+                            <div className="settings-avatar-empty">{user.name?.charAt(0).toUpperCase() || 'U'}</div>
+                          )}
+                          <label className="settings-avatar-label">
+                            <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleAvatarChange} />
+                            <span className="settings-avatar-btn">{isBn ? 'ছবি পরিবর্তন করুন' : 'Change photo'}</span>
+                          </label>
+                        </div>
+                        <div className="settings-row"><span>{isBn ? 'নাম' : 'Name'}</span><input type="text" required minLength="2" maxLength="80" value={settingsForm.name} onChange={(e) => setSettingsForm({ ...settingsForm, name: e.target.value })} /></div>
+                        <div className="settings-row"><span>{isBn ? 'ইমেইল' : 'Email'}</span><input type="email" required maxLength="254" value={settingsForm.email} onChange={(e) => setSettingsForm({ ...settingsForm, email: e.target.value.trim().toLowerCase() })} /></div>
+                        <div className="settings-row"><span>{isBn ? 'ফোন' : 'Phone'}</span><input type="tel" required minLength="10" maxLength="20" value={settingsForm.phone} onChange={(e) => setSettingsForm({ ...settingsForm, phone: e.target.value.trim() })} /></div>
+                        <div className="settings-row"><span>{isBn ? 'এলাকা / লোকেশন' : 'Area / Location'}</span><input type="text" required minLength="2" maxLength="120" value={settingsForm.area} onChange={(e) => setSettingsForm({ ...settingsForm, area: e.target.value })} /></div>
+                        <div className="settings-row"><span>{isBn ? 'ভূমিকা' : 'Role'}</span><strong>{user.role}</strong></div>
+                      </div>
+                      <button type="button" className="button button-outline" onClick={saveProfile} disabled={settingsBusy} style={{ width: '100%' }}>{settingsBusy ? (isBn ? 'সংরক্ষণ হচ্ছে...' : 'Saving...') : (isBn ? 'প্রোফাইল সংরক্ষণ করুন' : 'Save profile')}</button>
+                    </div>
+                    <div className="settings-column settings-column-password">
+                      <form onSubmit={updateSettings} className="settings-password-form">
+                        <h3 className="settings-column-title">{isBn ? 'পাসওয়ার্ড পরিবর্তন' : 'Change password'}</h3>
+                        <div className="settings-password-row">
+                          <label className="password-field">
+                            {isBn ? 'বর্তমান পাসওয়ার্ড' : 'Current password'}
+                            <div className="password-input-wrap">
+                              <input type={showCurrentPassword ? 'text' : 'password'} required minLength="8" value={settingsForm.currentPassword} onChange={(e) => setSettingsForm({ ...settingsForm, currentPassword: e.target.value })} />
+                              <button type="button" className="password-toggle" onClick={() => togglePasswordVisibility('current')} aria-label={showCurrentPassword ? 'Hide password' : 'Show password'}>
+                                {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </button>
+                            </div>
+                          </label>
+                          <label className="password-field">
+                            {isBn ? 'নতুন পাসওয়ার্ড' : 'New password'}
+                            <div className="password-input-wrap">
+                              <input type={showNewPassword ? 'text' : 'password'} required minLength="8" value={settingsForm.newPassword} onChange={(e) => setSettingsForm({ ...settingsForm, newPassword: e.target.value })} />
+                              <button type="button" className="password-toggle" onClick={() => togglePasswordVisibility('new')} aria-label={showNewPassword ? 'Hide password' : 'Show password'}>
+                                {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </button>
+                            </div>
+                          </label>
+                          <label className="password-field">
+                            {isBn ? 'নতুন পাসওয়ার্ড নিশ্চিত করুন' : 'Confirm new password'}
+                            <div className="password-input-wrap">
+                              <input type={showConfirmPassword ? 'text' : 'password'} required minLength="8" value={settingsForm.confirmNewPassword} onChange={(e) => setSettingsForm({ ...settingsForm, confirmNewPassword: e.target.value })} />
+                              <button type="button" className="password-toggle" onClick={() => togglePasswordVisibility('confirm')} aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}>
+                                {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </button>
+                            </div>
+                          </label>
+                        </div>
+                        {settingsNotice && <div className={settingsNotice.includes('সফল') || settingsNotice.includes('successfully') || settingsNotice.includes('আপডেট করা হয়েছে') ? 'notice notice-success' : 'notice'} role="status">{settingsNotice}<button type="button" onClick={() => setSettingsNotice('')} aria-label={isBn ? 'বার্তা বন্ধ করুন' : 'Dismiss'}>×</button></div>}
+                        <button type="submit" className="button button-primary" disabled={settingsBusy} style={{ width: '100%' }}>{settingsBusy ? (isBn ? 'আপডেট হচ্ছে...' : 'Updating...') : (isBn ? 'পাসওয়ার্ড আপডেট করুন' : 'Update password')}</button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <section className="tasks-section" id="tasks">
+            <div className="panel-heading tasks-heading">
+              <div>
+                <h2>{isBn ? 'আমার কাজ' : 'My tasks'}</h2>
+              </div>
+              {user.role === 'customer' && (
+                <div className="task-tabs">
+                  {['active', 'pending', 'completed', 'cancelled'].map((tab) => {
+                    const label = tab === 'active' ? (isBn ? 'সক্রিয়' : 'Active') : tab === 'pending' ? (isBn ? 'অপেক্ষমাণ' : 'Pending') : tab === 'completed' ? (isBn ? 'সম্পন্ন' : 'Completed') : (isBn ? 'বাতিল' : 'Cancelled');
+                    return <button key={tab} type="button" className={`task-tab-btn ${customerTab === tab ? 'active' : ''}`} onClick={() => setCustomerTab(tab)}>{label}</button>;
+                  })}
+                </div>
+              )}
+              {user.role === 'runner' && (
+                <div className="task-tabs">
+                  {['open', 'mytasks', 'completed'].map((tab) => {
+                    const label = tab === 'open' ? (isBn ? 'খোলা কাজ' : 'Open jobs') : tab === 'mytasks' ? (isBn ? 'আমার কাজ' : 'My tasks') : (isBn ? 'সম্পন্ন' : 'Completed');
+                    return <button key={tab} type="button" className={`task-tab-btn ${runnerTab === tab ? 'active' : ''}`} onClick={() => setRunnerTab(tab)}>{label}</button>;
+                  })}
+                </div>
+              )}
+              <button className="button button-outline button-small" onClick={() => { load(); refreshNearby(); }} disabled={loading}>{loading ? (isBn ? 'লোড হচ্ছে...' : 'Loading...') : (isBn ? '↻ হালনাগাদ' : '↻ Refresh')}</button>
+            </div>
+            {user.role === 'runner' && (
+              <div className="marketplace-search-row">
+                <input value={marketSearch} onChange={(event) => setMarketSearch(event.target.value)} placeholder={isBn ? 'কীওয়ার্ড: medicine, parcel...' : 'Keyword: medicine, parcel...'} />
+                <input value={marketLocation} onChange={(event) => setMarketLocation(event.target.value)} placeholder={isBn ? 'লোকেশন / এলাকা: Gulshan, Banani...' : 'Location / area: Gulshan, Banani...'} />
+                <button className="button button-outline button-small" type="button" onClick={() => { setMarketSearch(''); setMarketLocation(''); }}>{isBn ? 'ক্লিয়ার' : 'Clear'}</button>
+              </div>
             )}
-            <div>
-              <b>{user.name}</b>
-              <small>{user.role === 'runner' ? uiText.header.runnerRole : user.role === 'admin' ? uiText.header.adminRole : uiText.header.customerRole}</small>
-              {user.area && <span className="profile-area-tag"> · 📍 {user.area}</span>}
+            {openDisputes.length > 0 && isAdmin && <div className="admin-alert">⚑ {openDisputes.length.toLocaleString(isBn ? 'bn-BD' : 'en-US')}{isBn ? 'টি খোলা সমস্যা—নিচের কাজগুলো পর্যালোচনা করুন।' : ` ${uiText.panels.openIssues}`}</div>}
+            {user.role === 'runner' && visibleTasks.length === 0 && !loading && (
+              <div className="empty-state">
+                <span>⌖</span>
+                <h3>{runnerPosition ? (isBn ? 'এখনও কোনো কাজ মেলেনি' : 'No jobs found yet') : (isBn ? 'কাছের কাজ দেখতে অবস্থান দিন' : 'Share your location to view nearby jobs')}</h3>
+                <p>{runnerPosition ? (isBn ? `নতুন কাজ এলে আবার খুঁজুন। আপনার কাজের সীমা ৳${Number(user.runnerLimit).toLocaleString('bn-BD')} পর্যন্ত।` : `When new jobs appear, they will show here. Your task limit is ৳${Number(user.runnerLimit).toLocaleString('en-US')}.`) : (isBn ? 'আপনার তথ্য শেয়ার করা হবে না; শুধু কাছের খোলা কাজ খুঁজতেই এটি ব্যবহার হয়।' : 'Your information is not shared; this is only used to find nearby open jobs.')}</p>
+                <button className="button button-primary" onClick={locateRunner} disabled={locationLoading}>
+                  {locationLoading ? (isBn ? 'খুঁজছি...' : 'Finding...') : (isBn ? 'অবস্থান শেয়ার করুন' : 'Share location')}
+                </button>
+              </div>
+            )}
+            {user.role !== 'runner' && tasks.length === 0 && !loading && <div className="empty-state"><span>✳</span><h3>{isBn ? 'এখনও কোনো কাজ পোস্ট করেননি' : 'You have not posted a task yet'}</h3><p>{isBn ? 'উপরে ফর্মটি পূরণ করে আপনার প্রথম কাজটি পোস্ট করুন।' : 'Fill the form above to post your first task.'}</p></div>}
+            <div className="task-list task-list-grid">
+              {(user.role === 'customer'
+                ? (customerTab === 'active' ? groupedTasks.active : customerTab === 'pending' ? groupedTasks.pending : customerTab === 'completed' ? groupedTasks.completed : groupedTasks.cancelled)
+                : (runnerTab === 'open' ? openJobs : runnerTab === 'mytasks' ? uniqueTasks.filter((t) => String(t.runnerId?._id || t.runnerId) === String(user.id) && ACTIVE_STATUSES.includes(t.status)) : groupedTasks.completed))
+                .slice(0, 4).map((task) => (
+                <TaskCard
+                  key={task._id}
+                  task={task}
+                  user={user}
+                  onRefresh={refreshAll}
+                  onError={setNotice}
+                  bids={bids}
+                  setBids={setBids}
+                  runnerPosition={runnerPosition}
+                  statusNames={statusNames}
+                  deliveryStages={deliveryStages}
+                  copy={taskCardCopy}
+                  onOpenChat={(nextTask) => { setChatTask(nextTask); setChatOpen(true); }}
+                  onReview={setReviewTask}
+                  selected={selectedTaskIds.includes(task._id)}
+                  onToggleSelect={toggleTaskSelect}
+                  onAdminEdit={openEditTask}
+                  onAdminDelete={(item) => setConfirmAction({
+                    message: isBn ? 'এই কাজটি স্থায়ীভাবে মুছে যাবে।' : 'This task will be permanently deleted.',
+                    action: async () => { await api.adminDeleteTask(item._id); await load(); },
+                  })}
+                />
+              ))}
+              {((user.role === 'customer'
+                ? (customerTab === 'active' ? groupedTasks.active : customerTab === 'pending' ? groupedTasks.pending : customerTab === 'completed' ? groupedTasks.completed : groupedTasks.cancelled)
+                : (runnerTab === 'open' ? openJobs : runnerTab === 'mytasks' ? uniqueTasks.filter((t) => String(t.runnerId?._id || t.runnerId) === String(user.id) && ACTIVE_STATUSES.includes(t.status)) : groupedTasks.completed))
+                .length > 4) && (
+                <button type="button" className="button button-outline button-small" onClick={() => { setCustomerTab('all'); }}>{isBn ? 'সব দেখুন' : 'View all'}</button>
+              )}
+              {((user.role === 'customer'
+                ? (customerTab === 'active' ? groupedTasks.active : customerTab === 'pending' ? groupedTasks.pending : customerTab === 'completed' ? groupedTasks.completed : groupedTasks.cancelled)
+                : (runnerTab === 'open' ? openJobs : runnerTab === 'mytasks' ? uniqueTasks.filter((t) => String(t.runnerId?._id || t.runnerId) === String(user.id) && ACTIVE_STATUSES.includes(t.status)) : groupedTasks.completed))
+                .length === 0) && (
+                <div className="empty-state">
+                  <span>📭</span>
+                  <h3>{user.role === 'runner' ? (runnerTab === 'open' ? (isBn ? 'কোনো খোলা কাজ নেই' : 'No open jobs yet') : runnerTab === 'mytasks' ? (isBn ? 'কোনো সক্রিয় কাজ নেই' : 'No active tasks') : (isBn ? 'কোনো সম্পন্ন কাজ নেই' : 'No completed tasks')) : (isBn ? 'কোনো কাজ নেই' : 'No tasks yet')}</h3>
+                  <p>{isBn ? 'এই ট্যাবের জন্য কোনো কাজ নেই।' : 'No tasks for this tab yet.'}</p>
+                </div>
+              )}
             </div>
-          </div>
-        </div>
+          </section>
 
-        <div className="dashboard-visual" aria-label="Local service workflow image">
-          <img
-            src="https://images.unsplash.com/photo-1521791055366-0d553872125f?auto=format&fit=crop&w=900&q=80"
-            alt="Runner delivering a parcel in a city neighborhood"
-          />
-          <div className="dashboard-visual-badge">
-            <span className="online-dot" />
-            <div>
-              <strong>{isBn ? 'সক্রিয় লোকেশন' : 'Live nearby'}</strong>
-              <small>{isBn ? '২৪ মিনিট আগে' : '24 mins ago'}</small>
-            </div>
-          </div>
-        </div>
-      </section>
+          <p className="safety-note"><span>♧</span> {isBn ? 'প্রতিটি পিকআপ ও ডেলিভারি OTP দিয়ে নিশ্চিত হয়। কখনো NID চাওয়া হবে না।' : 'Every pickup and delivery is confirmed with OTP. NID is never required.'}</p>
+        </>
+      )}
 
-      {notice && <div className={notice.includes('পোস্ট হয়েছে') || notice.includes('পাঠানো হয়েছে') ? 'notice notice-success' : 'notice'} role="status">{notice}<button onClick={() => setNotice('')} aria-label="বার্তা বন্ধ করুন">×</button></div>}
-
-      <section className="stats-grid dashboard-stats">
-        <StatCard icon="▣" label={uiText.stats.total} value={dashboard.stats.total} language={language} />
-        <StatCard icon="◷" label={uiText.stats.pending} value={dashboard.stats.pending} tone="stat-amber" language={language} />
-        <StatCard icon="⌁" label={uiText.stats.active} value={dashboard.stats.active} tone="stat-blue" language={language} />
-        <StatCard icon="✓" label={uiText.stats.completed} value={dashboard.stats.completed} tone="stat-green" language={language} />
-        {user.role === 'runner' && <StatCard icon="✦" label={uiText.stats.trust} value={user.trustScore} tone="stat-green" language={language} />}
-        {user.role === 'runner' && <StatCard icon="৳" label={uiText.stats.limit} value={money(user.runnerLimit)} tone="stat-blue" language={language} />}
-      </section>
-
-      {user.role === 'admin' && <AdminControlPanel language={language} users={adminUsers} tasks={tasks} onNotice={setNotice} onUsersChange={load} />}
-
-      <div className="dashboard-grid">
-        <section className="panel activity-panel">
-          <div className="panel-heading"><div><span className="panel-kicker">{uiText.panels.weekly}</span><h2>{uiText.panels.progress}</h2></div><span className="panel-icon">↗</span></div>
-          <div className="chart-wrap">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dashboard.activity} margin={{ top: 8, right: 12, left: -22, bottom: 0 }}>
-                <CartesianGrid stroke="#e9eee9" vertical={false} strokeDasharray="3 5" />
-                <XAxis dataKey="date" tickFormatter={(value) => new Date(`${value}T00:00:00`).toLocaleDateString(isBn ? 'bn-BD' : 'en-US', { day: 'numeric', month: 'short' })} tickLine={false} axisLine={false} tick={{ fill: '#8a958e', fontSize: 11 }} />
-                <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#8a958e', fontSize: 11 }} />
-                <Tooltip labelFormatter={(value) => new Date(`${value}T00:00:00`).toLocaleDateString(isBn ? 'bn-BD' : 'en-US')} formatter={(value) => [isBn ? `${value}টি` : `${value} tasks`, isBn ? 'কাজ' : 'Tasks']} />
-                <Bar dataKey="count" fill="#984826" radius={[6, 6, 0, 0]} maxBarSize={38} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-        <section className="panel map-panel">
-          <div className="panel-heading"><div><span className="panel-kicker">{uiText.panels.local}</span><h2>{uiText.panels.map}</h2></div>
-            {user.role === 'runner' && <button className="button button-outline button-small" onClick={locateRunner} disabled={locationLoading}>{locationLoading ? uiText.panels.searching : runnerPosition ? uiText.panels.findAgain : uiText.panels.find}</button>}
-          </div>
-          <TaskMap tasks={visibleTasks} center={currentCenter} radius={user.role === 'runner' && !!runnerPosition} />
-        </section>
-      </div>
-
-      {user.role === 'customer' && <section className="panel create-task-panel">
-        <div className="panel-heading"><div><span className="panel-kicker">{uiText.panels.newTaskKicker}</span><h2>{uiText.panels.newTaskTitle}</h2></div><span className="panel-icon">＋</span></div>
-        <form onSubmit={submitTask} className="task-create-form">
-          <div className="form-row">
-            <label>{uiText.panels.taskTitle}<input required minLength="3" maxLength="120" placeholder={isBn ? 'যেমন: ফার্মেসি থেকে ওষুধ আনুন' : 'Example: Pick up medicine from the pharmacy'} value={form.title} onChange={(event) => updateForm('title', event.target.value)} /></label>
-            <label>{uiText.panels.estimate}<input required type="number" min="1" max="500000" step="1" placeholder={isBn ? '২৫০' : '250'} value={form.estimatedPrice} onChange={(event) => updateForm('estimatedPrice', event.target.value)} /></label>
-          </div>
-          <label>{uiText.panels.taskDescription}<textarea required minLength="5" maxLength="2000" rows="3" placeholder={isBn ? 'কোন ওষুধ বা জিনিস, কোনো বিশেষ নির্দেশনা থাকলে লিখুন...' : 'Add any medication, item, or special instructions...'} value={form.description} onChange={(event) => updateForm('description', event.target.value)} /></label>
-          <div className="location-form-grid">
-            <LocationFields prefix="pickup" label={isBn ? 'পিকআপের' : 'Pickup'} values={form} onChange={updateForm} selectedPosition={form.pickupPosition} onSelectPosition={(position) => updateForm('pickupPosition', position)} onNotice={setNotice} />
-            <LocationFields prefix="delivery" label={isBn ? 'ডেলিভারির' : 'Delivery'} values={form} onChange={updateForm} selectedPosition={form.deliveryPosition} onSelectPosition={(position) => updateForm('deliveryPosition', position)} onNotice={setNotice} />
-          </div>
-          <div className="form-submit-row"><span>{uiText.panels.locationHelp}</span><button className="button button-primary" disabled={submitting}>{submitting ? uiText.panels.posting : uiText.panels.post} <span aria-hidden="true">→</span></button></div>
-        </form>
-      </section>}
-
-      {user.role === 'runner' && <section className="runner-location-banner">
-        <span className="runner-banner-icon">⌖</span><div><b>{isBn ? 'আপনার কাছের কাজ দেখতে চান?' : 'Want to see jobs near you?'}</b><p>{isBn ? 'আপনার অবস্থান ব্যবহার করুন—শুধু ৫ কিমির মধ্যে এবং আপনার সীমার বাজেটের কাজ দেখানো হবে।' : 'Share your location to find jobs within 5 km and within your budget limit.'}</p></div>
-        <button className="button button-primary" onClick={locateRunner} disabled={locationLoading}>{locationLoading ? (isBn ? 'অবস্থান খুঁজছি...' : 'Finding location...') : runnerPosition ? (isBn ? 'কাজ খুঁজুন' : 'Find jobs') : (isBn ? 'অবস্থান শেয়ার করুন' : 'Share location')}</button>
-      </section>}
-
-      <section className="tasks-section" id="tasks">
-        <div className="panel-heading tasks-heading"><div><span className="panel-kicker">{user.role === 'runner' ? (isBn ? 'আপনার রুটে' : 'Your route') : (isBn ? 'আপনার কাজগুলো' : 'Your tasks')}</span><h2>{user.role === 'runner' ? (isBn ? 'সব খোলা কাজ' : 'All open jobs') : user.role === 'admin' ? (isBn ? 'সাম্প্রতিক কাজ' : 'Recent tasks') : (isBn ? 'আমার কাজ' : 'My jobs')}</h2></div>
-          <button className="button button-outline button-small" onClick={() => { load(); refreshNearby(); }} disabled={loading}>{loading ? (isBn ? 'লোড হচ্ছে...' : 'Loading...') : (isBn ? '↻ হালনাগাদ' : '↻ Refresh')}</button>
-        </div>
-        {user.role === 'runner' && (
-          <div className="marketplace-search-row">
-            <input value={marketSearch} onChange={(event) => setMarketSearch(event.target.value)} placeholder={isBn ? 'কীওয়ার্ড: medicine, parcel...' : 'Keyword: medicine, parcel...'} />
-            <input value={marketLocation} onChange={(event) => setMarketLocation(event.target.value)} placeholder={isBn ? 'লোকেশন / এলাকাঃ Gulshan, Banani...' : 'Location / area: Gulshan, Banani...'} />
-            <button className="button button-outline button-small" type="button" onClick={() => { setMarketSearch(''); setMarketLocation(''); }}>{isBn ? 'ক্লিয়ার' : 'Clear'}</button>
-          </div>
-        )}
-        {user.role === 'admin' && selectedTaskIds.length > 0 && (
-          <div className="admin-bulk-bar">
-            <span>{selectedTaskIds.length} {isBn ? 'টি নির্বাচিত' : 'selected'}</span>
-            <button className="button button-outline button-small" type="button" onClick={() => setConfirmAction({
-              message: isBn ? 'নির্বাচিত কাজগুলো স্থায়ীভাবে মুছবেন?' : 'Permanently delete the selected tasks?',
-              action: async () => {
-                await api.adminBulkDeleteTasks(selectedTaskIds);
-                setSelectedTaskIds([]);
-                await load();
-              },
-            })}>{isBn ? 'নির্বাচিতগুলো মুছুন' : 'Delete selected'}</button>
-          </div>
-        )}
-        {user.role === 'admin' && openDisputes.length > 0 && <div className="admin-alert">⚑ {openDisputes.length.toLocaleString(isBn ? 'bn-BD' : 'en-US')}{isBn ? 'টি খোলা সমস্যা—নিচের কাজগুলো পর্যালোচনা করুন।' : uiText.panels.openIssues}</div>}
-        {user.role === 'runner' && visibleTasks.length === 0 && !loading && (
-          <div className="empty-state">
-            <span>⌖</span>
-            <h3>{runnerPosition ? (isBn ? 'এখনও কোনো কাজ মেলেনি' : 'No jobs found yet') : (isBn ? 'কাছের কাজ দেখতে অবস্থান দিন' : 'Share your location to view nearby jobs')}</h3>
-            <p>{runnerPosition ? (isBn ? `নতুন কাজ এলে আবার খুঁজুন। আপনার কাজের সীমা ৳${Number(user.runnerLimit).toLocaleString('bn-BD')} পর্যন্ত।` : `When new jobs appear, they will show here. Your task limit is ৳${Number(user.runnerLimit).toLocaleString('en-US')}.`) : (isBn ? 'আপনার তথ্য শেয়ার করা হবে না; শুধু কাছের খোলা কাজ খুঁজতেই এটি ব্যবহার হয়।' : 'Your information is not shared; this is only used to find nearby open jobs.')}</p>
-            <button className="button button-primary" onClick={locateRunner} disabled={locationLoading}>
-              {locationLoading ? (isBn ? 'খুঁজছি...' : 'Finding...') : (isBn ? 'অবস্থান শেয়ার করুন' : 'Share location')}
-            </button>
-          </div>
-        )}
-        {user.role !== 'runner' && tasks.length === 0 && !loading && <div className="empty-state"><span>✳</span><h3>{user.role === 'admin' ? (isBn ? 'এখনও কোনো কাজ নেই' : 'No jobs yet') : (isBn ? 'এখনও কোনো কাজ পোস্ট করেননি' : 'You have not posted a task yet')}</h3><p>{user.role === 'customer' ? (isBn ? 'উপরে ফর্মটি পূরণ করে আপনার প্রথম কাজটি পোস্ট করুন।' : 'Fill the form above to post your first task.') : (isBn ? 'কমিউনিটিতে কাজ শুরু হলে এখানে দেখা যাবে।' : 'Once work starts in the community, it will appear here.')}</p></div>}
-        <div className="task-list">
-          {visibleTasks.map((task) => <TaskCard key={task._id} task={task} user={user} onRefresh={refreshAll} onError={setNotice} bids={bids} setBids={setBids} runnerPosition={runnerPosition} loadNearby={refreshNearby} statusNames={statusNames} deliveryStages={deliveryStages} copy={taskCardCopy} onOpenChat={(nextTask) => { setChatTask(nextTask); setChatOpen(true); }} onReview={setReviewTask} selected={selectedTaskIds.includes(task._id)} onToggleSelect={toggleTaskSelect} onAdminEdit={openEditTask} onAdminDelete={(item) => setConfirmAction({
-            message: isBn ? 'এই কাজটি স্থায়ীভাবে মুছে যাবে।' : 'This task will be permanently deleted.',
-            action: async () => { await api.adminDeleteTask(item._id); await load(); },
-          })} />)}
-        </div>
-      </section>
-      <p className="safety-note"><span>♧</span> {isBn ? 'প্রতিটি পিকআপ ও ডেলিভারি OTP দিয়ে নিশ্চিত হয়। কখনো NID চাওয়া হবে না।' : 'Every pickup and delivery is confirmed with OTP. NID is never required.'}</p>
       {chatOpen && chatTask && <ChatPanel task={chatTask} user={user} language={language} open={chatOpen} onClose={() => { setChatOpen(false); setChatTask(null); }} />}
       <ReviewModal
         open={Boolean(reviewTask)}
@@ -1125,3 +1800,11 @@ export default function Home({ language = 'en' }) {
     </div>
   );
 }
+
+function Home(props) {
+  const { user } = useAuth();
+  if (!user) return null;
+  return <HomeInner {...props} />;
+}
+
+export default Home;
