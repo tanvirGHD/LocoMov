@@ -1,3 +1,5 @@
+const API_BASE = import.meta.env.VITE_API_URL || 'https://locomov-server.onrender.com';
+
 async function request(path, options = {}) {
   const headers = { ...options.headers };
   if (!(typeof FormData !== 'undefined' && options.body instanceof FormData)) {
@@ -5,7 +7,7 @@ async function request(path, options = {}) {
   }
   let response;
   try {
-    response = await fetch(`/api${path}`, { credentials: 'include', ...options, headers });
+    response = await fetch(`${API_BASE}/api${path}`, { credentials: 'include', ...options, headers });
   } catch {
     const isBn = localStorage.getItem('locomuv-language') === 'bn';
     throw new Error(isBn ? 'সার্ভারে সংযোগ করা যাচ্ছে না, একটু পরে চেষ্টা করুন।' : 'Cannot connect to the server. Please try again later.');

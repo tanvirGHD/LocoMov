@@ -25,10 +25,11 @@ let httpServer = null;
 let io;
 
 if (!isVercel) {
+  const corsOrigin = process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',').map(s => s.trim()) : '*';
   httpServer = http.createServer(app);
   io = new Server(httpServer, {
     cors: {
-      origin: true,
+      origin: corsOrigin,
       credentials: true,
     },
   });
