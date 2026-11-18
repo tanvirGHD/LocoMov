@@ -271,8 +271,8 @@ export async function updateProfile(req, res) {
 }
 
 export function logout(req, res) {
-  res.clearCookie('token', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
-  res.clearCookie('remembered_device', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
+  res.clearCookie('token', { httpOnly: true, sameSite: 'none', secure: true, path: '/' });
+  res.clearCookie('remembered_device', { httpOnly: true, sameSite: 'none', secure: true, path: '/' });
   return res.json({ message: 'Logged out successfully.' });
 }
 

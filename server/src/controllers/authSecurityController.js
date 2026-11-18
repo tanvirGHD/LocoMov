@@ -57,7 +57,7 @@ export async function login(req, res) {
     if (device && !['admin', 'super_admin', 'sub_admin'].includes(user.role)) {
       const digest = crypto.createHash('sha256').update(device).digest('hex');
       if (user.trustedDevices.some((item) => item.tokenHash === digest && item.expiresAt > new Date())) {
-        res.cookie('token', jwt.sign({ id: String(user._id), version: user.sessionVersion }, process.env.JWT_SECRET, { expiresIn: '7d' }), { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 864e5, path: '/' });
+        res.cookie('token', jwt.sign({ id: String(user._id), version: user.sessionVersion }, process.env.JWT_SECRET, { expiresIn: '7d' }), { httpOnly: true, sameSite: 'none', secure: true, maxAge: 7 * 864e5, path: '/' });
         return res.json({ user: publicUser(user), authenticated: true });
       }
     }
@@ -73,10 +73,10 @@ export async function login(req, res) {
   if (remember) {
     const device = crypto.randomBytes(32).toString('hex');
     user.trustedDevices = [...user.trustedDevices.filter((item) => item.expiresAt > new Date()), { tokenHash: crypto.createHash('sha256').update(device).digest('hex'), expiresAt: new Date(Date.now() + 30 * 864e5) }];
-    res.cookie('remembered_device', device, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 30 * 864e5, path: '/' });
+    res.cookie('remembered_device', device, { httpOnly: true, sameSite: 'none', secure: true, maxAge: 30 * 864e5, path: '/' });
     await user.save();
   }
-  res.cookie('token', jwt.sign({ id: String(user._id), version: user.sessionVersion }, process.env.JWT_SECRET, { expiresIn: '7d' }), { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 864e5, path: '/' });
+  res.cookie('token', jwt.sign({ id: String(user._id), version: user.sessionVersion }, process.env.JWT_SECRET, { expiresIn: '7d' }), { httpOnly: true, sameSite: 'none', secure: true, maxAge: 7 * 864e5, path: '/' });
   return res.json({ user: publicUser(user), authenticated: true });
 }
 
@@ -97,10 +97,10 @@ export async function verifyLoginCode(req, res) {
   if (remember) {
     const device = crypto.randomBytes(32).toString('hex');
     user.trustedDevices = [...user.trustedDevices.filter((item) => item.expiresAt > new Date()), { tokenHash: crypto.createHash('sha256').update(device).digest('hex'), expiresAt: new Date(Date.now() + 30 * 864e5) }];
-    res.cookie('remembered_device', device, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 30 * 864e5, path: '/' });
+    res.cookie('remembered_device', device, { httpOnly: true, sameSite: 'none', secure: true, maxAge: 30 * 864e5, path: '/' });
     await user.save();
   }
-  res.cookie('token', jwt.sign({ id: String(user._id), version: user.sessionVersion }, process.env.JWT_SECRET, { expiresIn: '7d' }), { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 864e5, path: '/' });
+  res.cookie('token', jwt.sign({ id: String(user._id), version: user.sessionVersion }, process.env.JWT_SECRET, { expiresIn: '7d' }), { httpOnly: true, sameSite: 'none', secure: true, maxAge: 7 * 864e5, path: '/' });
   if (!user.emailVerified) await User.updateOne({ _id: user._id }, { $set: { emailVerified: true } });
   return res.json({ user: publicUser(user), authenticated: true });
 }
@@ -208,7 +208,7 @@ export async function completeAccountChange(req, res) {
   req.user.sessionVersion += 1; req.user.trustedDevices = [];
   await req.user.save(); await record.deleteOne();
   await notifyEmailChange(oldEmail, kind).catch(() => {});
-  res.clearCookie('token', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
+  res.clearCookie('token', { httpOnly: true, sameSite: 'none', secure: true, path: '/' });
   return res.json({ message: `${kind === 'email' ? 'Email' : 'Phone'} updated. Please sign in again.` });
 }
 
@@ -220,6 +220,6 @@ export async function updatePassword(req, res) {
   const oldEmail = user.email;
   user.password = parsed.data.newPassword; user.sessionVersion += 1; user.trustedDevices = [];
   await user.save(); await notifyEmailChange(oldEmail, 'password').catch(() => {});
-  res.clearCookie('token', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
+  res.clearCookie('token', { httpOnly: true, sameSite: 'none', secure: true, path: '/' });
   return res.json({ message: 'Password updated. Please sign in again.' });
 }
