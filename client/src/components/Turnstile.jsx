@@ -4,7 +4,8 @@ export default function Turnstile({ onToken }) {
   const [siteKey, setSiteKey] = useState('');
   const [container] = useState(() => `turnstile-${Math.random().toString(36).slice(2)}`);
   useEffect(() => {
-    fetch('/api/auth/config').then((response) => response.json()).then((data) => setSiteKey(data.turnstileSiteKey || '')).catch(() => {});
+    const API_BASE = import.meta.env.VITE_API_URL || 'https://locomov-server.onrender.com';
+    fetch(`${API_BASE}/api/auth/config`).then((response) => response.json()).then((data) => setSiteKey(data.turnstileSiteKey || '')).catch(() => {});
   }, []);
   useEffect(() => {
     if (!siteKey) { onToken(''); return; }
